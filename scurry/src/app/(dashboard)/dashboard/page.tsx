@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useConnectionStore } from '@/lib/store';
 
-export default function Home() {
+export default function DashboardPage() {
   const { connections } = useConnectionStore();
 
   return (

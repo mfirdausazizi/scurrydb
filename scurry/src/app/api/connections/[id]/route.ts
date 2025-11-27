@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnectionById, updateConnection, deleteConnection } from '@/lib/db/app-db';
-import { connectionSchema } from '@/lib/validations/connection';
+import { connectionFormSchema } from '@/lib/validations/connection';
+import { getCurrentUser } from '@/lib/auth/session';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const user = await getCurrentUser();
     const { id } = await params;
-    const connection = getConnectionById(id);
+    const connection = getConnectionById(id, user?.id);
     
     if (!connection) {
       return NextResponse.json(
@@ -30,11 +32,29 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     const { id } = await params;
+    
+    // Verify ownership
+    const existing = getConnectionById(id, user.id);
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Connection not found' },
+        { status: 404 }
+      );
+    }
+    
     const body = await request.json();
     
     // Partial validation for updates
-    const validationResult = connectionSchema.partial().safeParse(body);
+    const validationResult = connectionFormSchema.partial().safeParse(body);
     
     if (!validationResult.success) {
       return NextResponse.json(
@@ -65,7 +85,25 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     const { id } = await params;
+    
+    // Verify ownership
+    const existing = getConnectionById(id, user.id);
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Connection not found' },
+        { status: 404 }
+      );
+    }
+    
     const deleted = deleteConnection(id);
     
     if (!deleted) {

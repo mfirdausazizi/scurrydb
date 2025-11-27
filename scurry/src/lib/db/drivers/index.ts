@@ -1,6 +1,7 @@
 import type { DatabaseConnection } from '@/types';
 import { testMySqlConnection } from './mysql';
 import { testPostgresConnection } from './postgresql';
+import { testSqliteConnection } from './sqlite';
 
 export async function testConnection(connection: DatabaseConnection): Promise<{ success: boolean; message: string; version?: string }> {
   switch (connection.type) {
@@ -10,11 +11,7 @@ export async function testConnection(connection: DatabaseConnection): Promise<{ 
     case 'postgresql':
       return testPostgresConnection(connection);
     case 'sqlite':
-      return {
-        success: true,
-        message: 'SQLite connection validated',
-        version: 'SQLite 3',
-      };
+      return testSqliteConnection(connection);
     default:
       return {
         success: false,
@@ -25,3 +22,4 @@ export async function testConnection(connection: DatabaseConnection): Promise<{ 
 
 export { testMySqlConnection, createMySqlPool } from './mysql';
 export { testPostgresConnection, createPostgresPool } from './postgresql';
+export { testSqliteConnection, createSqliteConnection } from './sqlite';

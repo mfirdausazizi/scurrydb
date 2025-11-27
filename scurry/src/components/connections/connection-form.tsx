@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  connectionSchema,
+  connectionFormSchema,
   databaseTypes,
   defaultPorts,
   connectionColors,
@@ -51,7 +51,7 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
   const [submitting, setSubmitting] = React.useState(false);
 
   const form = useForm<ConnectionFormData>({
-    resolver: zodResolver(connectionSchema),
+    resolver: zodResolver(connectionFormSchema),
     defaultValues: {
       name: connection?.name || '',
       type: connection?.type || 'mysql',
@@ -64,6 +64,9 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
       color: connection?.color || connectionColors[0],
     },
   });
+
+  const watchedType = form.watch('type');
+  const isSqlite = watchedType === 'sqlite';
 
   React.useEffect(() => {
     if (connection) {
@@ -84,6 +87,15 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
   const handleTypeChange = (type: typeof databaseTypes[number]) => {
     form.setValue('type', type);
     form.setValue('port', defaultPorts[type]);
+    // Reset server-specific fields for SQLite
+    if (type === 'sqlite') {
+      form.setValue('host', '');
+      form.setValue('username', '');
+      form.setValue('password', '');
+      form.setValue('ssl', false);
+    } else if (form.getValues('host') === '') {
+      form.setValue('host', 'localhost');
+    }
   };
 
   const handleTest = async () => {
@@ -202,83 +214,95 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="host"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>Host</FormLabel>
-                    <FormControl>
-                      <Input placeholder="localhost" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {!isSqlite && (
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="host"
+                  render={({ field }) => (
+                    <FormItem className="col-span-2">
+                      <FormLabel>Host</FormLabel>
+                      <FormControl>
+                        <Input placeholder="localhost" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="port"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Port</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                <FormField
+                  control={form.control}
+                  name="port"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Port</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          {...field}
+                          onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
 
             <FormField
               control={form.control}
               name="database"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Database Name</FormLabel>
+                  <FormLabel>{isSqlite ? 'Database File Path' : 'Database Name'}</FormLabel>
                   <FormControl>
-                    <Input placeholder="my_database" {...field} />
+                    <Input 
+                      placeholder={isSqlite ? '/path/to/database.db' : 'my_database'} 
+                      {...field} 
+                    />
                   </FormControl>
+                  {isSqlite && (
+                    <p className="text-xs text-muted-foreground">
+                      Enter the full path to the SQLite database file, or use :memory: for in-memory database
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl>
-                      <Input placeholder="root" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {!isSqlite && (
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Username</FormLabel>
+                      <FormControl>
+                        <Input placeholder="root" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
 
             {testResult && (
               <div

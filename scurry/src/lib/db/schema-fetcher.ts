@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { Client } from 'pg';
+import Database from 'better-sqlite3';
 import type { DatabaseConnection, TableInfo, ColumnDefinition, IndexInfo } from '@/types';
 
 export async function fetchTables(connection: DatabaseConnection): Promise<TableInfo[]> {
@@ -9,6 +10,8 @@ export async function fetchTables(connection: DatabaseConnection): Promise<Table
       return fetchMySqlTables(connection);
     case 'postgresql':
       return fetchPostgresTables(connection);
+    case 'sqlite':
+      return fetchSqliteTables(connection);
     default:
       throw new Error(`Unsupported database type: ${connection.type}`);
   }
@@ -24,6 +27,8 @@ export async function fetchColumns(
       return fetchMySqlColumns(connection, tableName);
     case 'postgresql':
       return fetchPostgresColumns(connection, tableName);
+    case 'sqlite':
+      return fetchSqliteColumns(connection, tableName);
     default:
       throw new Error(`Unsupported database type: ${connection.type}`);
   }
@@ -39,6 +44,8 @@ export async function fetchIndexes(
       return fetchMySqlIndexes(connection, tableName);
     case 'postgresql':
       return fetchPostgresIndexes(connection, tableName);
+    case 'sqlite':
+      return fetchSqliteIndexes(connection, tableName);
     default:
       throw new Error(`Unsupported database type: ${connection.type}`);
   }
@@ -278,5 +285,95 @@ async function fetchPostgresIndexes(
     }));
   } finally {
     await client.end();
+  }
+}
+
+// SQLite schema fetcher functions
+function fetchSqliteTables(connection: DatabaseConnection): TableInfo[] {
+  const db = new Database(connection.database);
+  
+  try {
+    const rows = db.prepare(`
+      SELECT name, type 
+      FROM sqlite_master 
+      WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all() as Array<{ name: string; type: string }>;
+    
+    return rows.map((row) => ({
+      name: row.name,
+      type: row.type === 'view' ? 'view' : 'table',
+    }));
+  } finally {
+    db.close();
+  }
+}
+
+function fetchSqliteColumns(connection: DatabaseConnection, tableName: string): ColumnDefinition[] {
+  const db = new Database(connection.database);
+  
+  try {
+    const columns = db.prepare(`PRAGMA table_info("${tableName}")`).all() as Array<{
+      cid: number;
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+      pk: number;
+    }>;
+    
+    // Get foreign keys
+    const foreignKeys = db.prepare(`PRAGMA foreign_key_list("${tableName}")`).all() as Array<{
+      id: number;
+      seq: number;
+      table: string;
+      from: string;
+      to: string;
+    }>;
+    
+    const fkMap = new Map(foreignKeys.map((fk) => [fk.from, { table: fk.table, column: fk.to }]));
+    
+    return columns.map((col) => ({
+      name: col.name,
+      type: col.type || 'unknown',
+      nullable: col.notnull === 0,
+      defaultValue: col.dflt_value || undefined,
+      isPrimaryKey: col.pk === 1,
+      isForeignKey: fkMap.has(col.name),
+      references: fkMap.get(col.name),
+    }));
+  } finally {
+    db.close();
+  }
+}
+
+function fetchSqliteIndexes(connection: DatabaseConnection, tableName: string): IndexInfo[] {
+  const db = new Database(connection.database);
+  
+  try {
+    const indexes = db.prepare(`PRAGMA index_list("${tableName}")`).all() as Array<{
+      seq: number;
+      name: string;
+      unique: number;
+      origin: string;
+      partial: number;
+    }>;
+    
+    return indexes.map((idx) => {
+      const indexInfo = db.prepare(`PRAGMA index_info("${idx.name}")`).all() as Array<{
+        seqno: number;
+        cid: number;
+        name: string;
+      }>;
+      
+      return {
+        name: idx.name,
+        columns: indexInfo.map((col) => col.name),
+        unique: idx.unique === 1,
+        primary: idx.origin === 'pk',
+      };
+    });
+  } finally {
+    db.close();
   }
 }

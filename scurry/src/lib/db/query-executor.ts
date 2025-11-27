@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { Client } from 'pg';
+import Database from 'better-sqlite3';
 import type { DatabaseConnection, QueryResult, ColumnInfo } from '@/types';
 
 const MAX_ROWS = 10000;
@@ -19,6 +20,8 @@ export async function executeQuery(
         return await executeMySqlQuery(connection, sql, effectiveLimit, startTime);
       case 'postgresql':
         return await executePostgresQuery(connection, sql, effectiveLimit, startTime);
+      case 'sqlite':
+        return executeSqliteQuery(connection, sql, effectiveLimit, startTime);
       default:
         throw new Error(`Unsupported database type: ${connection.type}`);
     }
@@ -129,5 +132,54 @@ async function executePostgresQuery(
     };
   } finally {
     await client.end();
+  }
+}
+
+function executeSqliteQuery(
+  connection: DatabaseConnection,
+  sql: string,
+  limit: number,
+  startTime: number
+): QueryResult {
+  const db = new Database(connection.database);
+  
+  try {
+    const trimmedSql = sql.trim().toLowerCase();
+    const isSelect = trimmedSql.startsWith('select') || trimmedSql.startsWith('pragma') || trimmedSql.startsWith('explain');
+    
+    if (isSelect) {
+      const stmt = db.prepare(sql);
+      const rows = stmt.all() as Record<string, unknown>[];
+      const executionTime = Date.now() - startTime;
+      
+      // Get column info from the first row or statement
+      const columns: ColumnInfo[] = stmt.columns().map((col) => ({
+        name: col.name,
+        type: col.type || 'unknown',
+        nullable: true,
+      }));
+      
+      const limitedRows = rows.slice(0, limit);
+      
+      return {
+        columns,
+        rows: limitedRows,
+        rowCount: rows.length,
+        executionTime,
+      };
+    } else {
+      // Non-SELECT query (INSERT, UPDATE, DELETE, etc.)
+      const result = db.prepare(sql).run();
+      const executionTime = Date.now() - startTime;
+      
+      return {
+        columns: [{ name: 'affected_rows', type: 'number', nullable: false }],
+        rows: [{ affected_rows: result.changes }],
+        rowCount: 1,
+        executionTime,
+      };
+    }
+  } finally {
+    db.close();
   }
 }

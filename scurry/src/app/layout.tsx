@@ -1,10 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { ThemeProvider } from '@/components/layout/theme-provider';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
-import { AppSidebar, Header } from '@/components/layout';
-import { Toaster } from '@/components/ui/sonner';
 
 const inter = Inter({
   variable: '--font-geist-sans',
@@ -29,23 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <SidebarProvider>
-            <AppSidebar />
-            <SidebarInset>
-              <Header />
-              <main className="flex-1 overflow-auto p-4">
-                {children}
-              </main>
-            </SidebarInset>
-          </SidebarProvider>
-          <Toaster />
-        </ThemeProvider>
+        {children}
       </body>
     </html>
   );

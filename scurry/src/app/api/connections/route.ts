@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getAllConnections, createConnection } from '@/lib/db/app-db';
-import { connectionSchema } from '@/lib/validations/connection';
+import { connectionFormSchema } from '@/lib/validations/connection';
+import { getCurrentUser } from '@/lib/auth/session';
 
 export async function GET() {
   try {
-    const connections = getAllConnections();
+    const user = await getCurrentUser();
+    const connections = getAllConnections(user?.id);
     // Don't send passwords to client
     const safeConnections = connections.map(({ password: _password, ...rest }) => rest);
     return NextResponse.json(safeConnections);
@@ -20,8 +22,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
     const body = await request.json();
-    const validationResult = connectionSchema.safeParse(body);
+    const validationResult = connectionFormSchema.safeParse(body);
     
     if (!validationResult.success) {
       return NextResponse.json(
@@ -33,7 +43,7 @@ export async function POST(request: NextRequest) {
     const connection = createConnection({
       id: uuidv4(),
       ...validationResult.data,
-    });
+    }, user.id);
     
     // Don't send password back
     const { password: _password, ...safeConnection } = connection;

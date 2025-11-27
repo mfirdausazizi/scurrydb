@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -11,6 +13,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
 import { ThemeToggle } from './theme-toggle';
 
 interface HeaderProps {
@@ -21,6 +24,22 @@ interface HeaderProps {
 }
 
 export function Header({ breadcrumbs = [] }: HeaderProps) {
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
       <SidebarTrigger className="-ml-1" />
@@ -29,7 +48,7 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
       <Breadcrumb className="flex-1">
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink href="/">Home</BreadcrumbLink>
+            <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
           </BreadcrumbItem>
           {breadcrumbs.map((crumb, index) => (
             <React.Fragment key={crumb.label}>
@@ -47,6 +66,15 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
       </Breadcrumb>
 
       <ThemeToggle />
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleLogout}
+        disabled={isLoggingOut}
+        title="Sign out"
+      >
+        <LogOut className="h-4 w-4" />
+      </Button>
     </header>
   );
 }
