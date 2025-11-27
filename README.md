@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="public/images/scurry-logo.svg" alt="Scurry Logo" width="120" />
-</p>
-
 <h1 align="center">🐿️ Scurry</h1>
 
 <p align="center">
