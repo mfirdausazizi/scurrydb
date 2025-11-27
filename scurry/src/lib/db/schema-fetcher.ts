@@ -1,0 +1,282 @@
+import mysql from 'mysql2/promise';
+import { Client } from 'pg';
+import type { DatabaseConnection, TableInfo, ColumnDefinition, IndexInfo } from '@/types';
+
+export async function fetchTables(connection: DatabaseConnection): Promise<TableInfo[]> {
+  switch (connection.type) {
+    case 'mysql':
+    case 'mariadb':
+      return fetchMySqlTables(connection);
+    case 'postgresql':
+      return fetchPostgresTables(connection);
+    default:
+      throw new Error(`Unsupported database type: ${connection.type}`);
+  }
+}
+
+export async function fetchColumns(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<ColumnDefinition[]> {
+  switch (connection.type) {
+    case 'mysql':
+    case 'mariadb':
+      return fetchMySqlColumns(connection, tableName);
+    case 'postgresql':
+      return fetchPostgresColumns(connection, tableName);
+    default:
+      throw new Error(`Unsupported database type: ${connection.type}`);
+  }
+}
+
+export async function fetchIndexes(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<IndexInfo[]> {
+  switch (connection.type) {
+    case 'mysql':
+    case 'mariadb':
+      return fetchMySqlIndexes(connection, tableName);
+    case 'postgresql':
+      return fetchPostgresIndexes(connection, tableName);
+    default:
+      throw new Error(`Unsupported database type: ${connection.type}`);
+  }
+}
+
+async function fetchMySqlTables(connection: DatabaseConnection): Promise<TableInfo[]> {
+  const conn = await mysql.createConnection({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? {} : undefined,
+  });
+
+  try {
+    const [rows] = await conn.execute(`
+      SELECT 
+        TABLE_NAME as name,
+        TABLE_TYPE as type,
+        TABLE_ROWS as row_count
+      FROM information_schema.TABLES 
+      WHERE TABLE_SCHEMA = ?
+      ORDER BY TABLE_NAME
+    `, [connection.database]);
+
+    return (rows as Array<{ name: string; type: string; row_count: number }>).map((row) => ({
+      name: row.name,
+      type: row.type === 'VIEW' ? 'view' : 'table',
+      rowCount: row.row_count || 0,
+    }));
+  } finally {
+    await conn.end();
+  }
+}
+
+async function fetchPostgresTables(connection: DatabaseConnection): Promise<TableInfo[]> {
+  const client = new Client({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+
+  await client.connect();
+
+  try {
+    const result = await client.query(`
+      SELECT 
+        table_name as name,
+        table_type as type
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      ORDER BY table_name
+    `);
+
+    return result.rows.map((row) => ({
+      name: row.name,
+      schema: 'public',
+      type: row.type === 'VIEW' ? 'view' : 'table',
+    }));
+  } finally {
+    await client.end();
+  }
+}
+
+async function fetchMySqlColumns(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<ColumnDefinition[]> {
+  const conn = await mysql.createConnection({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? {} : undefined,
+  });
+
+  try {
+    const [rows] = await conn.execute(`
+      SELECT 
+        COLUMN_NAME as name,
+        COLUMN_TYPE as type,
+        IS_NULLABLE as nullable,
+        COLUMN_DEFAULT as default_value,
+        COLUMN_KEY as column_key
+      FROM information_schema.COLUMNS 
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION
+    `, [connection.database, tableName]);
+
+    return (rows as Array<{
+      name: string;
+      type: string;
+      nullable: string;
+      default_value: string | null;
+      column_key: string;
+    }>).map((row) => ({
+      name: row.name,
+      type: row.type,
+      nullable: row.nullable === 'YES',
+      defaultValue: row.default_value || undefined,
+      isPrimaryKey: row.column_key === 'PRI',
+      isForeignKey: row.column_key === 'MUL',
+    }));
+  } finally {
+    await conn.end();
+  }
+}
+
+async function fetchPostgresColumns(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<ColumnDefinition[]> {
+  const client = new Client({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+
+  await client.connect();
+
+  try {
+    const result = await client.query(`
+      SELECT 
+        c.column_name as name,
+        c.data_type as type,
+        c.is_nullable as nullable,
+        c.column_default as default_value,
+        CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key
+      FROM information_schema.columns c
+      LEFT JOIN (
+        SELECT ku.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage ku ON tc.constraint_name = ku.constraint_name
+        WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1
+      ) pk ON c.column_name = pk.column_name
+      WHERE c.table_schema = 'public' AND c.table_name = $1
+      ORDER BY c.ordinal_position
+    `, [tableName]);
+
+    return result.rows.map((row) => ({
+      name: row.name,
+      type: row.type,
+      nullable: row.nullable === 'YES',
+      defaultValue: row.default_value || undefined,
+      isPrimaryKey: row.is_primary_key,
+      isForeignKey: false,
+    }));
+  } finally {
+    await client.end();
+  }
+}
+
+async function fetchMySqlIndexes(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<IndexInfo[]> {
+  const conn = await mysql.createConnection({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? {} : undefined,
+  });
+
+  try {
+    const [rows] = await conn.execute(`
+      SELECT 
+        INDEX_NAME as name,
+        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) as columns,
+        NOT NON_UNIQUE as is_unique
+      FROM information_schema.STATISTICS 
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      GROUP BY INDEX_NAME, NON_UNIQUE
+      ORDER BY INDEX_NAME
+    `, [connection.database, tableName]);
+
+    return (rows as Array<{
+      name: string;
+      columns: string;
+      is_unique: number;
+    }>).map((row) => ({
+      name: row.name,
+      columns: row.columns.split(','),
+      unique: Boolean(row.is_unique),
+      primary: row.name === 'PRIMARY',
+    }));
+  } finally {
+    await conn.end();
+  }
+}
+
+async function fetchPostgresIndexes(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<IndexInfo[]> {
+  const client = new Client({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+
+  await client.connect();
+
+  try {
+    const result = await client.query(`
+      SELECT
+        i.relname as name,
+        array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns,
+        ix.indisunique as is_unique,
+        ix.indisprimary as is_primary
+      FROM pg_class t
+      JOIN pg_index ix ON t.oid = ix.indrelid
+      JOIN pg_class i ON i.oid = ix.indexrelid
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+      WHERE t.relname = $1 AND t.relkind = 'r'
+      GROUP BY i.relname, ix.indisunique, ix.indisprimary
+      ORDER BY i.relname
+    `, [tableName]);
+
+    return result.rows.map((row) => ({
+      name: row.name,
+      columns: row.columns,
+      unique: row.is_unique,
+      primary: row.is_primary,
+    }));
+  } finally {
+    await client.end();
+  }
+}
