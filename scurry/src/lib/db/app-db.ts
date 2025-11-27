@@ -67,6 +67,47 @@ function initializeSchema(database: Database.Database) {
     
     CREATE INDEX IF NOT EXISTS idx_connections_name ON connections(name);
     CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id);
+    
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
+    
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      connection_id TEXT,
+      title TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE SET NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
+    
+    CREATE TABLE IF NOT EXISTS ai_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sql_query TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id);
   `);
 }
 
@@ -311,5 +352,112 @@ export function updateConnection(id: string, updates: Partial<Omit<DatabaseConne
 export function deleteConnection(id: string): boolean {
   const database = getDb();
   const result = database.prepare('DELETE FROM connections WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+// AI Settings types and functions
+export type AIProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
+
+export interface AISettings {
+  id: string;
+  userId: string;
+  provider: AIProvider;
+  apiKey: string | null;
+  model: string | null;
+  temperature: number;
+  maxTokens: number;
+  baseUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+function rowToAISettings(row: Record<string, unknown>): AISettings {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    provider: row.provider as AIProvider,
+    apiKey: row.api_key ? decrypt(row.api_key as string) : null,
+    model: row.model as string | null,
+    temperature: row.temperature as number,
+    maxTokens: row.max_tokens as number,
+    baseUrl: row.base_url as string | null,
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  };
+}
+
+export function getAISettings(userId: string): AISettings | null {
+  const database = getDb();
+  const row = database.prepare('SELECT * FROM ai_settings WHERE user_id = ?').get(userId);
+  return row ? rowToAISettings(row as Record<string, unknown>) : null;
+}
+
+export function saveAISettings(userId: string, settings: {
+  provider: AIProvider;
+  apiKey?: string | null;
+  model?: string | null;
+  temperature?: number;
+  maxTokens?: number;
+  baseUrl?: string | null;
+}): AISettings {
+  const database = getDb();
+  const now = new Date().toISOString();
+  const existing = getAISettings(userId);
+  
+  if (existing) {
+    const fields: string[] = ['updated_at = ?'];
+    const values: unknown[] = [now];
+    
+    fields.push('provider = ?');
+    values.push(settings.provider);
+    
+    if (settings.apiKey !== undefined) {
+      fields.push('api_key = ?');
+      values.push(settings.apiKey ? encrypt(settings.apiKey) : null);
+    }
+    if (settings.model !== undefined) {
+      fields.push('model = ?');
+      values.push(settings.model);
+    }
+    if (settings.temperature !== undefined) {
+      fields.push('temperature = ?');
+      values.push(settings.temperature);
+    }
+    if (settings.maxTokens !== undefined) {
+      fields.push('max_tokens = ?');
+      values.push(settings.maxTokens);
+    }
+    if (settings.baseUrl !== undefined) {
+      fields.push('base_url = ?');
+      values.push(settings.baseUrl);
+    }
+    
+    values.push(userId);
+    database.prepare(`UPDATE ai_settings SET ${fields.join(', ')} WHERE user_id = ?`).run(...values);
+  } else {
+    const id = require('uuid').v4();
+    database.prepare(`
+      INSERT INTO ai_settings (id, user_id, provider, api_key, model, temperature, max_tokens, base_url, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      userId,
+      settings.provider,
+      settings.apiKey ? encrypt(settings.apiKey) : null,
+      settings.model || null,
+      settings.temperature ?? 0.7,
+      settings.maxTokens ?? 2048,
+      settings.baseUrl || null,
+      now,
+      now
+    );
+  }
+  
+  return getAISettings(userId)!;
+}
+
+export function deleteAISettings(userId: string): boolean {
+  const database = getDb();
+  const result = database.prepare('DELETE FROM ai_settings WHERE user_id = ?').run(userId);
   return result.changes > 0;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Play, Loader2, Code, History, Download } from 'lucide-react';
+import { Play, Loader2, Code, History, Download, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -27,9 +27,11 @@ interface QueryToolbarProps {
   onExecute: () => void;
   onFormat: () => void;
   onToggleHistory: () => void;
+  onToggleAI?: () => void;
   onExport?: () => void;
   executing: boolean;
   hasResults: boolean;
+  showAI?: boolean;
 }
 
 export function QueryToolbar({
@@ -39,9 +41,11 @@ export function QueryToolbar({
   onExecute,
   onFormat,
   onToggleHistory,
+  onToggleAI,
   onExport,
   executing,
   hasResults,
+  showAI,
 }: QueryToolbarProps) {
   return (
     <TooltipProvider>
@@ -66,6 +70,21 @@ export function QueryToolbar({
         </Select>
 
         <div className="flex-1" />
+
+        {onToggleAI && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant={showAI ? 'secondary' : 'ghost'} 
+                size="icon" 
+                onClick={onToggleAI}
+              >
+                <Bot className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>AI Assistant</TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>

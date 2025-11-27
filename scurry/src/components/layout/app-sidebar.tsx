@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Database, Plus, Settings, LayoutDashboard, Search, FileCode, Loader2 } from 'lucide-react';
+import { Database, Plus, Settings, LayoutDashboard, Search, FileCode, Loader2, Bot } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -118,7 +118,15 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton asChild isActive={pathname === '/settings'}>
+              <Link href="/settings">
+                <Bot className="h-4 w-4" />
+                <span>AI Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname === '/connections'}>
               <Link href="/connections">
                 <Settings className="h-4 w-4" />
                 <span>Manage Connections</span>

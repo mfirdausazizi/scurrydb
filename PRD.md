@@ -1,10 +1,10 @@
 # Product Requirements Document (PRD)
 # 🐿️ Scurry — Modern Web-Based SQL Database Manager
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Date:** November 2025  
 **Author:** Firdaus  
-**Status:** Draft  
+**Status:** Active Development (Phase 1 Complete)  
 **Project Type:** Open Source Hobby Project  
 **License:** AGPL-3.0  
 **Development Approach:** AI-Assisted (Factory Droid)
@@ -26,6 +26,8 @@ To create a free, open-source alternative to legacy database management tools th
 - **Mobile-First Design:** Full functionality on tablets and smartphones
 - **Self-Hosted:** Run on your own infrastructure, no vendor lock-in
 - **AI-Assisted Development:** Built with Factory Droid for rapid iteration
+- **AI-Powered Queries:** Natural language to SQL with configurable AI models (OpenAI, Anthropic, Ollama)
+- **MCP Integration:** Model Context Protocol server for external AI agent access to your databases
 
 ### 1.3 Why "Scurry"?
 
@@ -581,13 +583,53 @@ This project is built using **Factory Droid** — an AI-powered software develop
 
 **Priority:** P1 (Should Have)
 
+#### 5.5.1 AI Model Settings
+
 | Requirement | Description | Acceptance Criteria |
 |-------------|-------------|---------------------|
-| Natural Language to SQL | Convert plain English to SQL | 80%+ accuracy on common queries |
-| Query Optimization | Suggest performance improvements | Index recommendations; query rewrites |
-| Schema Suggestions | Recommend schema improvements | Based on query patterns |
-| Auto-Documentation | Generate table/column descriptions | Based on data patterns and names |
-| Anomaly Detection | Alert on unusual query patterns | Configurable sensitivity |
+| Model Provider Selection | Support OpenAI, Anthropic, Ollama, custom endpoints | User can select and configure provider in settings |
+| API Key Management | Secure storage of API keys | Keys encrypted at rest using AES-256 |
+| Model Selection | Choose specific model (gpt-4, claude-3, llama3, etc.) | Dropdown with available models per provider |
+| Temperature/Parameters | Configure model behavior | Sliders for temperature, max tokens, etc. |
+| Connection Test | Verify AI provider connectivity | Clear success/failure feedback |
+
+#### 5.5.2 Natural Language Queries
+
+| Requirement | Description | Acceptance Criteria |
+|-------------|-------------|---------------------|
+| NL to SQL | Convert plain English to SQL | 80%+ accuracy on common queries |
+| Query Explanation | AI explains complex queries | Clear, beginner-friendly explanations |
+| Query Suggestions | AI suggests optimizations | Performance improvement recommendations |
+| CRUD Operations | Natural language INSERT/UPDATE/DELETE | Confirmation dialog before execution |
+| Context Awareness | AI understands current schema | Uses table/column names from connected database |
+
+#### 5.5.3 Database Analysis
+
+| Requirement | Description | Acceptance Criteria |
+|-------------|-------------|---------------------|
+| Schema Analysis | AI analyzes database structure | Recommendations for normalization, indexes |
+| Data Insights | AI summarizes data patterns | Statistical overview, anomaly detection |
+| Query History Analysis | AI identifies common patterns | Suggest query templates based on history |
+| Performance Recommendations | AI suggests optimizations | Based on query patterns and schema structure |
+
+#### 5.5.4 MCP Server (Internal)
+
+| Requirement | Description | Acceptance Criteria |
+|-------------|-------------|---------------------|
+| Database Tools | Expose CRUD operations as MCP tools | `execute_query`, `list_tables`, `describe_table`, etc. |
+| Schema Resources | Expose schema as MCP resources | Tables, columns, relationships as resources |
+| Query Prompts | Pre-built prompts for common tasks | Template library accessible via MCP |
+| Context Management | Maintain conversation context | Multi-turn interactions with memory |
+
+#### 5.5.5 MCP Server (External)
+
+| Requirement | Description | Acceptance Criteria |
+|-------------|-------------|---------------------|
+| Standalone MCP Server | External AI agents can connect | Standard MCP protocol compliance |
+| Authentication | Secure access to MCP endpoints | API key authentication per user |
+| Rate Limiting | Prevent abuse | Configurable limits per user/key |
+| Audit Logging | Log all MCP interactions | Query logs with user attribution |
+| Claude Desktop Integration | Works with Claude Desktop app | Tested configuration for Claude |
 
 ---
 
@@ -638,41 +680,42 @@ This project is built using **Factory Droid** — an AI-powered software develop
 ### 6.1 System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Client Layer                              │
-├─────────────┬─────────────┬─────────────┬─────────────┬─────────┤
-│   Web App   │  Mobile Web │   Desktop   │     CLI     │   API   │
-│   (React)   │ (Responsive)│ (Electron)  │   (Rust)    │ Clients │
-└──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┴────┬────┘
-       │             │             │             │            │
-       └─────────────┴──────┬──────┴─────────────┴────────────┘
-                            │
-                    ┌───────▼───────┐
-                    │   API Gateway  │
-                    │   (Kong/Nginx) │
-                    └───────┬───────┘
-                            │
-       ┌────────────────────┼────────────────────┐
-       │                    │                    │
-┌──────▼──────┐     ┌───────▼───────┐    ┌───────▼───────┐
-│    Auth     │     │  Core API     │    │  WebSocket    │
-│   Service   │     │   Service     │    │    Server     │
-│  (Node.js)  │     │   (Node.js)   │    │   (Node.js)   │
-└──────┬──────┘     └───────┬───────┘    └───────┬───────┘
-       │                    │                    │
-       └────────────────────┼────────────────────┘
-                            │
-                    ┌───────▼───────┐
-                    │  Query Engine │
-                    │    (Rust)     │
-                    └───────┬───────┘
-                            │
-       ┌────────────────────┼────────────────────┐
-       │                    │                    │
-┌──────▼──────┐     ┌───────▼───────┐    ┌───────▼───────┐
-│   MySQL     │     │  PostgreSQL   │    │    SQLite     │
-│   Driver    │     │    Driver     │    │    Driver     │
-└─────────────┘     └───────────────┘    └───────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                            Client Layer                                   │
+├──────────────┬──────────────┬──────────────┬──────────────┬──────────────┤
+│   Web App    │  Mobile Web  │   AI Chat    │   External   │     MCP      │
+│   (React)    │ (Responsive) │  Interface   │   AI Agents  │   Clients    │
+└──────┬───────┴──────┬───────┴──────┬───────┴──────┬───────┴──────┬───────┘
+       │              │              │              │              │
+       └──────────────┴──────┬───────┴──────────────┴──────────────┘
+                             │
+                     ┌───────▼───────┐
+                     │  API Gateway   │
+                     │  (Next.js)     │
+                     └───────┬───────┘
+                             │
+       ┌─────────────────────┼─────────────────────┬───────────────────┐
+       │                     │                     │                   │
+┌──────▼──────┐      ┌───────▼───────┐     ┌───────▼───────┐   ┌───────▼───────┐
+│    Auth     │      │   Core API    │     │  AI Service   │   │  MCP Server   │
+│   Service   │      │   Service     │     │  (LLM Calls)  │   │  (Tools/      │
+│ (Argon2id)  │      │               │     │               │   │   Resources)  │
+└──────┬──────┘      └───────┬───────┘     └───────┬───────┘   └───────┬───────┘
+       │                     │                     │                   │
+       └─────────────────────┼─────────────────────┴───────────────────┘
+                             │
+                     ┌───────▼───────┐
+                     │ Query Engine  │
+                     │  (Node.js)    │
+                     └───────┬───────┘
+                             │
+       ┌─────────────────────┼─────────────────────┬───────────────────┐
+       │                     │                     │                   │
+┌──────▼──────┐      ┌───────▼───────┐     ┌───────▼───────┐   ┌───────▼───────┐
+│   MySQL/    │      │  PostgreSQL   │     │    SQLite     │   │   MariaDB     │
+│  MariaDB    │      │    Driver     │     │    Driver     │   │    Driver     │
+│   Driver    │      │               │     │               │   │               │
+└─────────────┘      └───────────────┘     └───────────────┘   └───────────────┘
 ```
 
 ### 6.2 Technology Stack
@@ -925,29 +968,31 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 
 ### 9.1 Development Phases
 
-#### Phase 1: MVP (Months 1-4)
+#### Phase 1: MVP ✅ COMPLETED
 **Goal:** Core functionality for individual developers
 
-- Connection management (MySQL, PostgreSQL)
-- SQL editor with autocomplete
-- Results viewer with export
-- Basic table management
-- Local authentication with 2FA
-- Responsive design
-- Basic audit logging
+- [x] Connection management (MySQL, PostgreSQL, MariaDB, SQLite)
+- [x] SQL editor with Monaco Editor (syntax highlighting, formatting)
+- [x] Results viewer with TanStack Table (sorting, pagination, export)
+- [x] Schema browser (tables, columns, indexes, data preview)
+- [x] User authentication with Argon2id hashing
+- [x] Responsive design with dark/light modes
+- [x] Landing page with public/authenticated routes
+- [x] Per-user connection isolation
 
-**Milestone:** Private Beta Launch
+**Milestone:** ✅ Private Beta Launch (November 2025)
 
-#### Phase 2: Team Features (Months 5-7)
-**Goal:** Collaboration and enterprise readiness
+#### Phase 2: AI & Team Features (In Progress)
+**Goal:** AI-powered queries and collaboration features
 
-- Team workspaces
-- SSO integration (SAML/OIDC)
-- Shared queries and connections
-- Advanced RBAC
-- SQLite and MariaDB support
-- AI-powered features (NL to SQL)
-- Backup and restore
+- [ ] AI model settings page (OpenAI, Anthropic, Ollama support)
+- [ ] Natural language to SQL queries
+- [ ] AI-powered database analysis and insights
+- [ ] Query optimization suggestions
+- [ ] MCP server (internal) for AI chat interface
+- [ ] MCP server (external) for Claude Desktop and other AI agents
+- [ ] Team workspaces
+- [ ] Shared connections and queries
 
 **Milestone:** Public Beta Launch
 

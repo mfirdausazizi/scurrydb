@@ -13,14 +13,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YOUR_USERNAME/scurry/blob/main/LICENSE">
+  <a href="https://github.com/mfirdausazizi/scurry/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License" />
   </a>
-  <a href="https://github.com/YOUR_USERNAME/scurry/releases">
-    <img src="https://img.shields.io/github/v/release/YOUR_USERNAME/scurry?include_prereleases" alt="Release" />
+  <a href="https://github.com/mfirdausazizi/scurry/releases">
+    <img src="https://img.shields.io/github/v/release/mfirdausazizi/scurry?include_prereleases" alt="Release" />
   </a>
-  <a href="https://github.com/YOUR_USERNAME/scurry/stargazers">
-    <img src="https://img.shields.io/github/stars/YOUR_USERNAME/scurry" alt="Stars" />
+  <a href="https://github.com/mfirdausazizi/scurry/stargazers">
+    <img src="https://img.shields.io/github/stars/mfirdausazizi/scurry" alt="Stars" />
   </a>
 </p>
 
@@ -38,38 +38,55 @@ Scurry is a fresh take on SQL database management — **modern UI, mobile-friend
 
 ## Features
 
+### 🔐 User Authentication
+- Secure registration and login system
+- Argon2id password hashing (OWASP recommended)
+- Session-based authentication with secure cookies
+- Per-user connection isolation — your connections are private
+
 ### 🎨 Modern Interface
 - Clean, warm design with dark/light modes
-- Responsive layout that works on mobile, tablet, and desktop
+- Responsive layout (mobile, tablet, desktop)
+- Beautiful landing page
 - Keyboard shortcuts for power users
 
 ### 🔌 Multi-Database Support
-- **MySQL** / **MariaDB**
-- **PostgreSQL**
-- **SQLite**
-- More coming soon...
+- **MySQL** ✅
+- **MariaDB** ✅
+- **PostgreSQL** ✅
+- **SQLite** ✅ (file-based databases)
 
 ### ✏️ Powerful Query Editor
-- Syntax highlighting with Monaco Editor (VS Code's editor)
-- Intelligent SQL autocomplete
-- Query history and favorites
-- One-click query execution
+- Monaco Editor (VS Code's engine)
+- SQL syntax highlighting
+- Query history (persisted, last 100 queries)
+- One-click execution (Ctrl/Cmd+Enter)
+- SQL formatting with one click
 
 ### 📊 Rich Results Viewer
-- Fast, sortable data grid
-- Export to CSV, JSON, SQL
-- Inline data editing (coming soon)
-- JSON column expansion
+- TanStack Table with sorting
+- Pagination for large datasets
+- Export to CSV
+- NULL value styling
+- Copy cell values to clipboard
 
 ### 🗂️ Schema Browser
-- Visual database structure explorer
-- Table columns, indexes, and foreign keys
-- Quick data preview
+- Database tree view
+- Table structure inspector (columns, types, keys)
+- Index information
+- Data preview with pagination
 
-### 🔒 Security-Conscious
-- Passwords encrypted at rest
+### 🔒 Security-First
+- Passwords encrypted at rest (AES-256-GCM)
 - Runs on your infrastructure
 - No data sent to third parties
+- Session-based authentication
+
+### 🤖 AI-Powered (Coming Soon)
+- Natural language to SQL queries
+- AI-powered database analysis & insights
+- Query optimization suggestions
+- MCP server for Claude Desktop and external AI agents
 
 ---
 
@@ -84,7 +101,7 @@ docker run -d \
   -p 3000:3000 \
   -v scurry-data:/app/data \
   -e ENCRYPTION_KEY="your-32-char-secret-key-here!!" \
-  ghcr.io/YOUR_USERNAME/scurry:latest
+  ghcr.io/mfirdausazizi/scurry:latest
 
 # Open in browser
 open http://localhost:3000
@@ -97,7 +114,7 @@ open http://localhost:3000
 version: '3.8'
 services:
   scurry:
-    image: ghcr.io/YOUR_USERNAME/scurry:latest
+    image: ghcr.io/mfirdausazizi/scurry:latest
     ports:
       - "3000:3000"
     volumes:
@@ -118,7 +135,7 @@ docker-compose up -d
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/scurry.git
+git clone https://github.com/mfirdausazizi/scurry.git
 cd scurry
 
 # Install dependencies
@@ -167,6 +184,10 @@ npm run dev
 | `ENCRYPTION_KEY` | Yes | — | 32-character key for encrypting connection passwords |
 | `PORT` | No | `3000` | Port to run the server on |
 | `NODE_ENV` | No | `development` | Environment (`development` or `production`) |
+| `OPENAI_API_KEY` | No | — | OpenAI API key for AI features |
+| `ANTHROPIC_API_KEY` | No | — | Anthropic API key for AI features |
+| `OLLAMA_HOST` | No | `http://localhost:11434` | Ollama server URL for local AI |
+| `MCP_SERVER_PORT` | No | `3001` | Port for external MCP server |
 
 ### Example `.env.local`
 
@@ -177,6 +198,11 @@ ENCRYPTION_KEY=your-32-char-secret-key-here!!
 
 # Optional: Custom port
 PORT=3000
+
+# Optional: AI Provider API Keys (configure in app settings)
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# OLLAMA_HOST=http://localhost:11434
 ```
 
 ---
@@ -192,7 +218,7 @@ PORT=3000
 
 ```bash
 # Clone and install
-git clone https://github.com/YOUR_USERNAME/scurry.git
+git clone https://github.com/mfirdausazizi/scurry.git
 cd scurry
 npm install
 
@@ -244,46 +270,52 @@ scurry/
 |----------|------------|
 | Framework | [Next.js 15](https://nextjs.org/) (App Router) |
 | Language | [TypeScript](https://www.typescriptlang.org/) |
-| Styling | [Tailwind CSS](https://tailwindcss.com/) |
-| UI Components | [shadcn/ui](https://ui.shadcn.com/) |
+| Styling | [Tailwind CSS v4](https://tailwindcss.com/) |
+| UI Components | [shadcn/ui](https://ui.shadcn.com/) + Radix |
 | State Management | [Zustand](https://zustand-demo.pmnd.rs/) |
 | SQL Editor | [Monaco Editor](https://microsoft.github.io/monaco-editor/) |
 | Data Grid | [TanStack Table](https://tanstack.com/table) |
 | Validation | [Zod](https://zod.dev/) |
+| Auth | [Argon2id](https://github.com/napi-rs/node-rs) (password hashing) |
 | Database Drivers | mysql2, pg, better-sqlite3 |
+| AI (Coming) | OpenAI, Anthropic, Ollama, MCP SDK |
 
 ---
 
 ## Roadmap
 
-### v0.1.0 — MVP ✨
-- [x] Project setup
-- [ ] Connection management (MySQL, PostgreSQL)
-- [ ] SQL query editor with syntax highlighting
-- [ ] Results viewer with sorting/pagination
-- [ ] Schema browser
-- [ ] Dark/light mode
-- [ ] Docker deployment
+### v0.1.0 — MVP ✅ Complete
+- [x] Project setup (Next.js 15, TypeScript, Tailwind CSS v4)
+- [x] User authentication (register, login, logout, sessions)
+- [x] Connection management (MySQL, PostgreSQL, MariaDB, SQLite)
+- [x] SQL query editor with Monaco Editor
+- [x] Results viewer with TanStack Table (sorting, pagination)
+- [x] Schema browser with table structure inspector
+- [x] Dark/light mode toggle
+- [x] Landing page with public/authenticated routes
+- [x] Per-user connection isolation
 
-### v0.5.0 — Polish
-- [ ] SQLite and MariaDB support
-- [ ] Query history and favorites
-- [ ] Table creation/modification GUI
-- [ ] Data export (CSV, JSON, SQL)
-- [ ] Inline data editing
-- [ ] Keyboard shortcuts
+### v0.2.0 — AI Integration (Next)
+- [ ] AI model settings page (OpenAI, Anthropic, Ollama)
+- [ ] Natural language to SQL queries
+- [ ] AI-powered database analysis & insights
+- [ ] Query optimization suggestions
+- [ ] MCP server (internal) for AI chat interface
+- [ ] MCP server (external) for Claude Desktop integration
 
-### v1.0.0 — Feature Complete
+### v0.3.0 — Collaboration
+- [ ] Team workspaces
+- [ ] Shared connections and queries
+- [ ] Query sharing with comments
+- [ ] Activity feed
+
+### v1.0.0 — Production Ready
 - [ ] Multi-tab query editor
-- [ ] Query execution plans (EXPLAIN)
 - [ ] SSH tunnel support
 - [ ] Import from SQL/CSV
-- [ ] Schema visualization
-
-### Future (Community-Driven)
-- [ ] Natural language to SQL (AI)
-- [ ] Real-time collaboration
-- [ ] Plugin system
+- [ ] Docker production image
+- [ ] Documentation site
+- [ ] Query execution plans (EXPLAIN)
 
 ---
 
@@ -303,15 +335,15 @@ Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of
 
 ### Good First Issues
 
-Looking to contribute? Check out issues labeled [`good first issue`](https://github.com/YOUR_USERNAME/scurry/labels/good%20first%20issue) — they're a great way to get started!
+Looking to contribute? Check out issues labeled [`good first issue`](https://github.com/mfirdausazizi/scurry/labels/good%20first%20issue) — they're a great way to get started!
 
 ---
 
 ## Support
 
-- **🐛 Bug Reports:** [Open an issue](https://github.com/YOUR_USERNAME/scurry/issues/new?template=bug_report.md)
-- **💡 Feature Requests:** [Start a discussion](https://github.com/YOUR_USERNAME/scurry/discussions/new?category=ideas)
-- **❓ Questions:** [Ask in discussions](https://github.com/YOUR_USERNAME/scurry/discussions/new?category=q-a)
+- **🐛 Bug Reports:** [Open an issue](https://github.com/mfirdausazizi/scurry/issues/new?template=bug_report.md)
+- **💡 Feature Requests:** [Start a discussion](https://github.com/mfirdausazizi/scurry/discussions/new?category=ideas)
+- **❓ Questions:** [Ask in discussions](https://github.com/mfirdausazizi/scurry/discussions/new?category=q-a)
 
 ---
 
@@ -352,5 +384,5 @@ This means:
 <p align="center">
   Made with ☕ and 🐿️ energy
   <br />
-  <a href="https://github.com/YOUR_USERNAME/scurry">Star us on GitHub</a> if you find Scurry useful!
+  <a href="https://github.com/mfirdausazizi/scurry">Star us on GitHub</a> if you find Scurry useful!
 </p>

@@ -8,6 +8,7 @@ import { AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { QueryToolbar } from '@/components/editor/query-toolbar';
 import { QueryHistory } from '@/components/editor/query-history';
+import { ChatPanel } from '@/components/ai/chat-panel';
 import { ResultsTable } from '@/components/results';
 import { useConnections } from '@/hooks';
 import { useQueryStore } from '@/lib/store';
@@ -32,6 +33,7 @@ export default function QueryPage() {
   const [executing, setExecuting] = React.useState(false);
   const [result, setResult] = React.useState<QueryResult | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
+  const [showAI, setShowAI] = React.useState(false);
 
   React.useEffect(() => {
     if (!selectedConnectionId && connections.length > 0) {
@@ -150,9 +152,11 @@ export default function QueryPage() {
             onExecute={handleExecute}
             onFormat={handleFormat}
             onToggleHistory={() => setShowHistory(!showHistory)}
+            onToggleAI={() => setShowAI(!showAI)}
             onExport={result && result.rows.length > 0 ? handleExport : undefined}
             executing={executing}
             hasResults={!!result && result.rows.length > 0}
+            showAI={showAI}
           />
 
           <div className="flex-1 min-h-0 flex flex-col">
@@ -205,6 +209,17 @@ export default function QueryPage() {
             }}
             onClose={() => setShowHistory(false)}
           />
+        )}
+
+        {showAI && (
+          <div className="w-[400px] border-l flex flex-col">
+            <ChatPanel
+              connectionId={selectedConnectionId || undefined}
+              onInsertSQL={(sql) => {
+                setCurrentQuery(sql);
+              }}
+            />
+          </div>
         )}
       </div>
     </div>
