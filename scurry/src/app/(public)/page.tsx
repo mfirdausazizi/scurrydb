@@ -50,7 +50,7 @@ export default function LandingPage() {
                 </Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="https://github.com/YOUR_USERNAME/scurry" target="_blank">
+                <Link href="https://github.com/mfirdausazizi/scurry" target="_blank">
                   <Github className="mr-2 h-5 w-5" />
                   View on GitHub
                 </Link>

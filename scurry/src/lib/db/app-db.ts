@@ -18,14 +18,13 @@ function getDb(): Database.Database {
     
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
-    initializeSchema();
+    initializeSchema(db);
+    migrateSchema(db);
   }
   return db;
 }
 
-function initializeSchema() {
-  const database = getDb();
-  
+function initializeSchema(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -69,6 +68,23 @@ function initializeSchema() {
     CREATE INDEX IF NOT EXISTS idx_connections_name ON connections(name);
     CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id);
   `);
+}
+
+function migrateSchema(database: Database.Database) {
+  // Check if connections table exists and needs user_id column
+  const tableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='connections'"
+  ).get();
+  
+  if (tableExists) {
+    const columns = database.prepare("PRAGMA table_info(connections)").all() as Array<{ name: string }>;
+    const hasUserId = columns.some((col) => col.name === 'user_id');
+    
+    if (!hasUserId) {
+      database.exec("ALTER TABLE connections ADD COLUMN user_id TEXT REFERENCES users(id)");
+      database.exec("CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id)");
+    }
+  }
 }
 
 // User types
