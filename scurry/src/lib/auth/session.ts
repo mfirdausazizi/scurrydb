@@ -10,7 +10,7 @@ export async function createUserSession(userId: string): Promise<Session> {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + SESSION_DURATION_DAYS);
   
-  const session = createSession({
+  const session = await createSession({
     id: sessionId,
     userId,
     expiresAt,
@@ -36,12 +36,12 @@ export async function getCurrentSession(): Promise<{ session: Session; user: Use
     return null;
   }
   
-  const session = getValidSession(sessionId);
+  const session = await getValidSession(sessionId);
   if (!session) {
     return null;
   }
   
-  const user = getUserById(session.userId);
+  const user = await getUserById(session.userId);
   if (!user) {
     return null;
   }
@@ -59,7 +59,7 @@ export async function invalidateSession(): Promise<void> {
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   
   if (sessionId) {
-    deleteSession(sessionId);
+    await deleteSession(sessionId);
     cookieStore.delete(SESSION_COOKIE_NAME);
   }
 }

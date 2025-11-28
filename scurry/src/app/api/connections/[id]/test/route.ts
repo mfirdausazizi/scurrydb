@@ -7,7 +7,7 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const connection = getConnectionById(id);
+    const connection = await getConnectionById(id);
     
     if (!connection) {
       return NextResponse.json(

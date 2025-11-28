@@ -15,12 +15,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!canManageTeam(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const invitations = getTeamInvitations(id);
+    const invitations = await getTeamInvitations(id);
     return NextResponse.json(invitations);
   } catch (error) {
     console.error('Failed to get invitations:', error);
@@ -36,7 +36,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!canManageTeam(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -48,7 +48,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Invitation ID is required' }, { status: 400 });
     }
 
-    const deleted = deleteTeamInvitation(invitationId);
+    const deleted = await deleteTeamInvitation(invitationId);
     if (!deleted) {
       return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
     }

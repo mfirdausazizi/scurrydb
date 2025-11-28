@@ -7,7 +7,7 @@ import { getCurrentUser } from '@/lib/auth/session';
 export async function GET() {
   try {
     const user = await getCurrentUser();
-    const connections = getAllConnections(user?.id);
+    const connections = await getAllConnections(user?.id);
     // Don't send passwords to client
     const safeConnections = connections.map(({ password: _password, ...rest }) => rest);
     return NextResponse.json(safeConnections);
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const connection = createConnection({
+    const connection = await createConnection({
       id: uuidv4(),
       ...validationResult.data,
     }, user.id);

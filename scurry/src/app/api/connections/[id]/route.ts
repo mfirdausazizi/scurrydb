@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
     const { id } = await params;
-    const connection = getConnectionById(id, user?.id);
+    const connection = await getConnectionById(id, user?.id);
     
     if (!connection) {
       return NextResponse.json(
@@ -43,7 +43,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     
     // Verify ownership
-    const existing = getConnectionById(id, user.id);
+    const existing = await getConnectionById(id, user.id);
     if (!existing) {
       return NextResponse.json(
         { error: 'Connection not found' },
@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
     
-    const updated = updateConnection(id, validationResult.data);
+    const updated = await updateConnection(id, validationResult.data);
     
     if (!updated) {
       return NextResponse.json(
@@ -96,7 +96,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     
     // Verify ownership
-    const existing = getConnectionById(id, user.id);
+    const existing = await getConnectionById(id, user.id);
     if (!existing) {
       return NextResponse.json(
         { error: 'Connection not found' },
@@ -104,7 +104,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
     
-    const deleted = deleteConnection(id);
+    const deleted = await deleteConnection(id);
     
     if (!deleted) {
       return NextResponse.json(

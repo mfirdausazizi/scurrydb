@@ -24,12 +24,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access to this connection
-    const connection = getConnectionById(connectionId, user.id);
+    const connection = await getConnectionById(connectionId, user.id);
     if (!connection) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
 
-    const logs = getDataChangeLogs({
+    const logs = await getDataChangeLogs({
       connectionId,
       tableName: tableName || undefined,
       limit,

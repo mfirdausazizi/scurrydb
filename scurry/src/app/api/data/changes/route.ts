@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const connection = getConnectionById(connectionId, user.id);
+    const connection = await getConnectionById(connectionId, user.id);
     if (!connection) {
       return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     }
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Log activity for successful changes
     if (result.insertedCount > 0) {
-      logActivity({
+      await logActivity({
         userId: user.id,
         action: 'data_inserted',
         resourceType: 'connection',
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (result.updatedCount > 0) {
-      logActivity({
+      await logActivity({
         userId: user.id,
         action: 'data_updated',
         resourceType: 'connection',
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (result.deletedCount > 0) {
-      logActivity({
+      await logActivity({
         userId: user.id,
         action: 'data_deleted',
         resourceType: 'connection',

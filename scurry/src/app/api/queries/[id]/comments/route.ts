@@ -14,11 +14,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params;
     
-    if (!canUserAccessQuery(user.id, id)) {
+    const canAccess = await canUserAccessQuery(user.id, id);
+    if (!canAccess) {
       return NextResponse.json({ error: 'Query not found' }, { status: 404 });
     }
 
-    const comments = getQueryComments(id);
+    const comments = await getQueryComments(id);
     return NextResponse.json(comments);
   } catch (error) {
     console.error('Failed to get comments:', error);
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { id } = await params;
     
-    if (!canUserAccessQuery(user.id, id)) {
+    const canAccess = await canUserAccessQuery(user.id, id);
+    if (!canAccess) {
       return NextResponse.json({ error: 'Query not found' }, { status: 404 });
     }
 
@@ -50,9 +52,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { content } = validationResult.data;
-    const query = getSavedQueryById(id);
+    const query = await getSavedQueryById(id);
 
-    const comment = createComment({
+    const comment = await createComment({
       queryId: id,
       userId: user.id,
       content,
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Log activity
     if (query) {
-      logActivity({
+      await logActivity({
         teamId: query.teamId,
         userId: user.id,
         action: 'comment_added',
@@ -92,7 +94,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Comment ID is required' }, { status: 400 });
     }
 
-    const comment = getCommentById(commentId);
+    const comment = await getCommentById(commentId);
     if (!comment) {
       return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
     }
@@ -102,7 +104,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const deleted = deleteComment(commentId);
+    const deleted = await deleteComment(commentId);
     if (!deleted) {
       return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
     }

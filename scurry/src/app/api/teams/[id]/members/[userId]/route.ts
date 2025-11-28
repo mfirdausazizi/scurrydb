@@ -20,7 +20,7 @@ export async function PUT(
     }
 
     const { id, userId } = await params;
-    const currentUserRole = getUserRoleInTeam(id, user.id);
+    const currentUserRole = await getUserRoleInTeam(id, user.id);
     if (!canManageTeam(currentUserRole)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -38,7 +38,7 @@ export async function PUT(
     const { role } = validationResult.data;
 
     // Cannot change the owner's role
-    const team = getTeamById(id);
+    const team = await getTeamById(id);
     if (team && team.ownerId === userId) {
       return NextResponse.json({ error: 'Cannot change the owner\'s role' }, { status: 400 });
     }
@@ -48,7 +48,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Only the owner can promote members to admin' }, { status: 403 });
     }
 
-    const member = updateTeamMemberRole(id, userId, role);
+    const member = await updateTeamMemberRole(id, userId, role);
     if (!member) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
@@ -73,7 +73,7 @@ export async function DELETE(
     const { id, userId } = await params;
     
     // User can remove themselves, or admins/owners can remove others
-    const currentUserRole = getUserRoleInTeam(id, user.id);
+    const currentUserRole = await getUserRoleInTeam(id, user.id);
     const isRemovingSelf = user.id === userId;
     
     if (!isRemovingSelf && !canManageTeam(currentUserRole)) {
@@ -81,12 +81,12 @@ export async function DELETE(
     }
 
     // Cannot remove the owner
-    const team = getTeamById(id);
+    const team = await getTeamById(id);
     if (team && team.ownerId === userId) {
       return NextResponse.json({ error: 'Cannot remove the team owner' }, { status: 400 });
     }
 
-    const removed = removeTeamMember(id, userId);
+    const removed = await removeTeamMember(id, userId);
     if (!removed) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }

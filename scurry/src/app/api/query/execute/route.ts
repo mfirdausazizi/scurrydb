@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     const { connectionId, sql, limit } = validationResult.data;
 
-    const connection = getConnectionById(connectionId);
+    const connection = await getConnectionById(connectionId);
     if (!connection) {
       return NextResponse.json(
         { error: 'Connection not found' },

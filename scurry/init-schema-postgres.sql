@@ -1,0 +1,200 @@
+-- ScurryDB PostgreSQL Schema
+-- This schema is for PostgreSQL production deployments
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  name TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS connections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  database_name TEXT NOT NULL,
+  username TEXT NOT NULL,
+  password TEXT NOT NULL,
+  ssl BOOLEAN DEFAULT false,
+  color TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_connections_name ON connections(name);
+CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id);
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL DEFAULT 'openai',
+  api_key TEXT,
+  model TEXT,
+  temperature REAL DEFAULT 0.7,
+  max_tokens INTEGER DEFAULT 2048,
+  base_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
+
+CREATE TABLE IF NOT EXISTS ai_conversations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  connection_id TEXT REFERENCES connections(id) ON DELETE SET NULL,
+  title TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sql_query TEXT,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id);
+
+-- Teams/Workspaces
+CREATE TABLE IF NOT EXISTS teams (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  owner_id TEXT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug);
+CREATE INDEX IF NOT EXISTS idx_teams_owner_id ON teams(owner_id);
+
+-- Team Members
+CREATE TABLE IF NOT EXISTS team_members (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',
+  invited_by TEXT,
+  joined_at TIMESTAMPTZ NOT NULL,
+  UNIQUE(team_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id);
+
+-- Team Invitations
+CREATE TABLE IF NOT EXISTS team_invitations (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  invited_by TEXT NOT NULL REFERENCES users(id),
+  token TEXT UNIQUE NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_invitations_team_id ON team_invitations(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_email ON team_invitations(email);
+
+-- Shared Connections (team-level)
+CREATE TABLE IF NOT EXISTS shared_connections (
+  id TEXT PRIMARY KEY,
+  connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  shared_by TEXT NOT NULL REFERENCES users(id),
+  permission TEXT NOT NULL DEFAULT 'read',
+  created_at TIMESTAMPTZ NOT NULL,
+  UNIQUE(connection_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_connections_team_id ON shared_connections(team_id);
+CREATE INDEX IF NOT EXISTS idx_shared_connections_connection_id ON shared_connections(connection_id);
+
+-- Saved Queries
+CREATE TABLE IF NOT EXISTS saved_queries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+  connection_id TEXT REFERENCES connections(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  sql TEXT NOT NULL,
+  is_public BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_queries_user_id ON saved_queries(user_id);
+CREATE INDEX IF NOT EXISTS idx_saved_queries_team_id ON saved_queries(team_id);
+
+-- Query Comments
+CREATE TABLE IF NOT EXISTS query_comments (
+  id TEXT PRIMARY KEY,
+  query_id TEXT NOT NULL REFERENCES saved_queries(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_comments_query_id ON query_comments(query_id);
+
+-- Activity Feed
+CREATE TABLE IF NOT EXISTS activities (
+  id TEXT PRIMARY KEY,
+  team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,
+  resource_type TEXT,
+  resource_id TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activities_team_id ON activities(team_id);
+CREATE INDEX IF NOT EXISTS idx_activities_user_id ON activities(user_id);
+CREATE INDEX IF NOT EXISTS idx_activities_created_at ON activities(created_at);
+
+-- Data Change Logs for tracking edits
+CREATE TABLE IF NOT EXISTS data_change_logs (
+  id TEXT PRIMARY KEY,
+  connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+  table_name TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  row_identifier JSONB,
+  old_values JSONB,
+  new_values JSONB,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  applied_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_change_logs_connection_id ON data_change_logs(connection_id);
+CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(table_name);
+CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at);
+

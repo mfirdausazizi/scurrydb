@@ -19,12 +19,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!role) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    const members = getTeamMembers(id);
+    const members = await getTeamMembers(id);
     return NextResponse.json(members);
   } catch (error) {
     console.error('Failed to get team members:', error);
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!canManageTeam(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -58,22 +58,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { email, role: memberRole } = validationResult.data;
 
     // Check if there's already a pending invitation
-    const existingInvitation = getPendingInvitationForEmail(id, email);
+    const existingInvitation = await getPendingInvitationForEmail(id, email);
     if (existingInvitation) {
       return NextResponse.json({ error: 'An invitation has already been sent to this email' }, { status: 409 });
     }
 
     // Check if the user exists and add them directly, otherwise create invitation
-    const existingUser = getUserByEmail(email);
+    const existingUser = await getUserByEmail(email);
     if (existingUser) {
       // Check if user is already a member
-      const existingMemberRole = getUserRoleInTeam(id, existingUser.id);
+      const existingMemberRole = await getUserRoleInTeam(id, existingUser.id);
       if (existingMemberRole) {
         return NextResponse.json({ error: 'User is already a team member' }, { status: 409 });
       }
 
       // Add directly as member
-      const member = addTeamMember({
+      const member = await addTeamMember({
         teamId: id,
         userId: existingUser.id,
         role: memberRole,
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Create invitation for non-existing user
-    const invitation = createTeamInvitation({
+    const invitation = await createTeamInvitation({
       teamId: id,
       email,
       role: memberRole,

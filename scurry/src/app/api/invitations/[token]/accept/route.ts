@@ -12,7 +12,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { token } = await params;
 
     // Verify the invitation exists and is valid
-    const invitation = getTeamInvitationByToken(token);
+    const invitation = await getTeamInvitationByToken(token);
     if (!invitation) {
       return NextResponse.json({ error: 'Invalid or expired invitation' }, { status: 404 });
     }
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const member = acceptTeamInvitation(token, user.id);
+    const member = await acceptTeamInvitation(token, user.id);
     if (!member) {
       return NextResponse.json({ error: 'Failed to accept invitation' }, { status: 500 });
     }
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { token } = await params;
 
-    const invitation = getTeamInvitationByToken(token);
+    const invitation = await getTeamInvitationByToken(token);
     if (!invitation) {
       return NextResponse.json({ error: 'Invalid or expired invitation' }, { status: 404 });
     }

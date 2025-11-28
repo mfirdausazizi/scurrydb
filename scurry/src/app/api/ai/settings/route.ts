@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const settings = getAISettings(user.id);
+    const settings = await getAISettings(user.id);
     
     if (!settings) {
       return NextResponse.json({
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const { provider, apiKey, model, temperature, maxTokens, baseUrl } = validationResult.data;
 
-    const settings = saveAISettings(user.id, {
+    const settings = await saveAISettings(user.id, {
       provider,
       apiKey: apiKey || null,
       model: model || null,

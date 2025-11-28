@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const { message, connectionId } = validationResult.data;
 
     // Get AI settings
-    const settings = getAISettings(user.id);
+    const settings = await getAISettings(user.id);
     if (!settings) {
       return new Response(
         JSON.stringify({ error: 'AI not configured. Please configure AI settings first.' }),
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     let dbType = 'SQL';
 
     if (connectionId) {
-      const connection = getConnectionById(connectionId, user.id);
+      const connection = await getConnectionById(connectionId, user.id);
       if (connection) {
         try {
           const tables = await fetchTables(connection);

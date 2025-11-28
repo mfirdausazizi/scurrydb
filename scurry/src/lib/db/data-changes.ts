@@ -1,6 +1,3 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   DataChangeLog,
@@ -10,32 +7,30 @@ import type {
 } from '@/types';
 import { executeQuery } from './query-executor';
 import type { DatabaseConnection } from '@/types';
+import { getDbClient, getDbType, type DbRow } from './db-client';
 
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
-
-let db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (!db) {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-  }
-  return db;
-}
-
-function rowToDataChangeLog(row: Record<string, unknown>): DataChangeLog {
+function rowToDataChangeLog(row: DbRow): DataChangeLog {
+  const dbType = getDbType();
   const log: DataChangeLog = {
     id: row.id as string,
     connectionId: row.connection_id as string,
     tableName: row.table_name as string,
     operation: row.operation as ChangeOperation,
-    rowIdentifier: row.row_identifier ? JSON.parse(row.row_identifier as string) : null,
-    oldValues: row.old_values ? JSON.parse(row.old_values as string) : null,
-    newValues: row.new_values ? JSON.parse(row.new_values as string) : null,
+    rowIdentifier: row.row_identifier 
+      ? (dbType === 'postgres' 
+          ? (row.row_identifier as Record<string, unknown>) 
+          : JSON.parse(row.row_identifier as string)) 
+      : null,
+    oldValues: row.old_values 
+      ? (dbType === 'postgres' 
+          ? (row.old_values as Record<string, unknown>) 
+          : JSON.parse(row.old_values as string)) 
+      : null,
+    newValues: row.new_values 
+      ? (dbType === 'postgres' 
+          ? (row.new_values as Record<string, unknown>) 
+          : JSON.parse(row.new_values as string)) 
+      : null,
     userId: row.user_id as string,
     appliedAt: new Date(row.applied_at as string),
   };
@@ -51,7 +46,7 @@ function rowToDataChangeLog(row: Record<string, unknown>): DataChangeLog {
   return log;
 }
 
-export function logDataChange(data: {
+export async function logDataChange(data: {
   connectionId: string;
   tableName: string;
   operation: ChangeOperation;
@@ -59,32 +54,35 @@ export function logDataChange(data: {
   oldValues?: Record<string, unknown> | null;
   newValues?: Record<string, unknown> | null;
   userId: string;
-}): DataChangeLog {
-  const database = getDb();
+}): Promise<DataChangeLog> {
+  const client = getDbClient();
   const now = new Date().toISOString();
   const id = uuidv4();
 
-  database.prepare(`
-    INSERT INTO data_change_logs (id, connection_id, table_name, operation, row_identifier, old_values, new_values, user_id, applied_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    data.connectionId,
-    data.tableName,
-    data.operation,
-    data.rowIdentifier ? JSON.stringify(data.rowIdentifier) : null,
-    data.oldValues ? JSON.stringify(data.oldValues) : null,
-    data.newValues ? JSON.stringify(data.newValues) : null,
-    data.userId,
-    now
+  await client.execute(
+    `INSERT INTO data_change_logs (id, connection_id, table_name, operation, row_identifier, old_values, new_values, user_id, applied_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.connectionId,
+      data.tableName,
+      data.operation,
+      data.rowIdentifier ? JSON.stringify(data.rowIdentifier) : null,
+      data.oldValues ? JSON.stringify(data.oldValues) : null,
+      data.newValues ? JSON.stringify(data.newValues) : null,
+      data.userId,
+      now
+    ]
   );
 
-  return getDataChangeLogById(id)!;
+  const log = await getDataChangeLogById(id);
+  if (!log) throw new Error('Failed to log data change');
+  return log;
 }
 
-export function getDataChangeLogById(id: string): DataChangeLog | null {
-  const database = getDb();
-  const row = database.prepare(`
+export async function getDataChangeLogById(id: string): Promise<DataChangeLog | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>(`
     SELECT 
       dcl.*,
       u.email as user_email,
@@ -92,54 +90,67 @@ export function getDataChangeLogById(id: string): DataChangeLog | null {
     FROM data_change_logs dcl
     LEFT JOIN users u ON dcl.user_id = u.id
     WHERE dcl.id = ?
-  `).get(id);
+  `, [id]);
 
-  return row ? rowToDataChangeLog(row as Record<string, unknown>) : null;
+  return row ? rowToDataChangeLog(row) : null;
 }
 
-export function getDataChangeLogs(options: {
+export async function getDataChangeLogs(options: {
   connectionId?: string;
   tableName?: string;
   userId?: string;
   limit?: number;
   offset?: number;
-}): DataChangeLog[] {
-  const database = getDb();
+}): Promise<DataChangeLog[]> {
+  const client = getDbClient();
+  const dbType = getDbType();
   const limit = options.limit || 50;
   const offset = options.offset || 0;
   
   const conditions: string[] = [];
   const params: unknown[] = [];
+  let paramIndex = 1;
 
   if (options.connectionId) {
-    conditions.push('dcl.connection_id = ?');
+    conditions.push(dbType === 'postgres' ? `dcl.connection_id = $${paramIndex++}` : 'dcl.connection_id = ?');
     params.push(options.connectionId);
   }
 
   if (options.tableName) {
-    conditions.push('dcl.table_name = ?');
+    conditions.push(dbType === 'postgres' ? `dcl.table_name = $${paramIndex++}` : 'dcl.table_name = ?');
     params.push(options.tableName);
   }
 
   if (options.userId) {
-    conditions.push('dcl.user_id = ?');
+    conditions.push(dbType === 'postgres' ? `dcl.user_id = $${paramIndex++}` : 'dcl.user_id = ?');
     params.push(options.userId);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const rows = database.prepare(`
-    SELECT 
-      dcl.*,
-      u.email as user_email,
-      u.name as user_name
-    FROM data_change_logs dcl
-    LEFT JOIN users u ON dcl.user_id = u.id
-    ${whereClause}
-    ORDER BY dcl.applied_at DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, limit, offset) as Array<Record<string, unknown>>;
+  const sql = dbType === 'postgres'
+    ? `SELECT 
+        dcl.*,
+        u.email as user_email,
+        u.name as user_name
+      FROM data_change_logs dcl
+      LEFT JOIN users u ON dcl.user_id = u.id
+      ${whereClause}
+      ORDER BY dcl.applied_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`
+    : `SELECT 
+        dcl.*,
+        u.email as user_email,
+        u.name as user_name
+      FROM data_change_logs dcl
+      LEFT JOIN users u ON dcl.user_id = u.id
+      ${whereClause}
+      ORDER BY dcl.applied_at DESC
+      LIMIT ? OFFSET ?`;
 
+  params.push(limit, offset);
+  
+  const rows = await client.query<DbRow>(sql, params);
   return rows.map(rowToDataChangeLog);
 }
 
@@ -204,7 +215,7 @@ export async function applyDataChanges(
         result.success = false;
       } else {
         result.deletedCount++;
-        logDataChange({
+        await logDataChange({
           connectionId: connection.id,
           tableName,
           operation: 'DELETE',
@@ -265,7 +276,7 @@ export async function applyDataChanges(
         result.success = false;
       } else {
         result.updatedCount++;
-        logDataChange({
+        await logDataChange({
           connectionId: connection.id,
           tableName,
           operation: 'UPDATE',
@@ -298,7 +309,7 @@ export async function applyDataChanges(
         result.success = false;
       } else {
         result.insertedCount++;
-        logDataChange({
+        await logDataChange({
           connectionId: connection.id,
           tableName,
           operation: 'INSERT',
@@ -317,11 +328,11 @@ export async function applyDataChanges(
   return result;
 }
 
-export function deleteOldDataChangeLogs(daysToKeep: number = 90): number {
-  const database = getDb();
+export async function deleteOldDataChangeLogs(daysToKeep: number = 90): Promise<number> {
+  const client = getDbClient();
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
-  const result = database.prepare('DELETE FROM data_change_logs WHERE applied_at < ?').run(cutoffDate.toISOString());
+  const result = await client.execute('DELETE FROM data_change_logs WHERE applied_at < ?', [cutoffDate.toISOString()]);
   return result.changes;
 }

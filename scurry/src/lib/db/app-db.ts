@@ -1,269 +1,7 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 import type { DatabaseConnection, DatabaseType } from '@/types';
-
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
-
-let db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (!db) {
-    // Ensure data directory exists
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    initializeSchema(db);
-    migrateSchema(db);
-  }
-  return db;
-}
-
-function initializeSchema(database: Database.Database) {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      name TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-    
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
-    
-    CREATE TABLE IF NOT EXISTS connections (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      host TEXT NOT NULL,
-      port INTEGER NOT NULL,
-      database_name TEXT NOT NULL,
-      username TEXT NOT NULL,
-      password TEXT NOT NULL,
-      ssl INTEGER DEFAULT 0,
-      color TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_connections_name ON connections(name);
-    CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id);
-    
-    CREATE TABLE IF NOT EXISTS ai_settings (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL UNIQUE,
-      provider TEXT NOT NULL DEFAULT 'openai',
-      api_key TEXT,
-      model TEXT,
-      temperature REAL DEFAULT 0.7,
-      max_tokens INTEGER DEFAULT 2048,
-      base_url TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
-    
-    CREATE TABLE IF NOT EXISTS ai_conversations (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      connection_id TEXT,
-      title TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE SET NULL
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
-    
-    CREATE TABLE IF NOT EXISTS ai_messages (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      sql_query TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id);
-    
-    -- Teams/Workspaces
-    CREATE TABLE IF NOT EXISTS teams (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      slug TEXT UNIQUE NOT NULL,
-      owner_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (owner_id) REFERENCES users(id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug);
-    CREATE INDEX IF NOT EXISTS idx_teams_owner_id ON teams(owner_id);
-    
-    -- Team Members
-    CREATE TABLE IF NOT EXISTS team_members (
-      id TEXT PRIMARY KEY,
-      team_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'member',
-      invited_by TEXT,
-      joined_at TEXT NOT NULL,
-      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      UNIQUE(team_id, user_id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);
-    CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id);
-    
-    -- Team Invitations
-    CREATE TABLE IF NOT EXISTS team_invitations (
-      id TEXT PRIMARY KEY,
-      team_id TEXT NOT NULL,
-      email TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'member',
-      invited_by TEXT NOT NULL,
-      token TEXT UNIQUE NOT NULL,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-      FOREIGN KEY (invited_by) REFERENCES users(id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_team_invitations_team_id ON team_invitations(team_id);
-    CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token);
-    CREATE INDEX IF NOT EXISTS idx_team_invitations_email ON team_invitations(email);
-    
-    -- Shared Connections (team-level)
-    CREATE TABLE IF NOT EXISTS shared_connections (
-      id TEXT PRIMARY KEY,
-      connection_id TEXT NOT NULL,
-      team_id TEXT NOT NULL,
-      shared_by TEXT NOT NULL,
-      permission TEXT NOT NULL DEFAULT 'read',
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
-      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-      FOREIGN KEY (shared_by) REFERENCES users(id),
-      UNIQUE(connection_id, team_id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_shared_connections_team_id ON shared_connections(team_id);
-    CREATE INDEX IF NOT EXISTS idx_shared_connections_connection_id ON shared_connections(connection_id);
-    
-    -- Saved Queries
-    CREATE TABLE IF NOT EXISTS saved_queries (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      team_id TEXT,
-      connection_id TEXT,
-      name TEXT NOT NULL,
-      description TEXT,
-      sql TEXT NOT NULL,
-      is_public INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE SET NULL
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_saved_queries_user_id ON saved_queries(user_id);
-    CREATE INDEX IF NOT EXISTS idx_saved_queries_team_id ON saved_queries(team_id);
-    
-    -- Query Comments
-    CREATE TABLE IF NOT EXISTS query_comments (
-      id TEXT PRIMARY KEY,
-      query_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (query_id) REFERENCES saved_queries(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_query_comments_query_id ON query_comments(query_id);
-    
-    -- Activity Feed
-    CREATE TABLE IF NOT EXISTS activities (
-      id TEXT PRIMARY KEY,
-      team_id TEXT,
-      user_id TEXT NOT NULL,
-      action TEXT NOT NULL,
-      resource_type TEXT,
-      resource_id TEXT,
-      metadata TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_activities_team_id ON activities(team_id);
-    CREATE INDEX IF NOT EXISTS idx_activities_user_id ON activities(user_id);
-    CREATE INDEX IF NOT EXISTS idx_activities_created_at ON activities(created_at);
-    
-    -- Data Change Logs for tracking edits
-    CREATE TABLE IF NOT EXISTS data_change_logs (
-      id TEXT PRIMARY KEY,
-      connection_id TEXT NOT NULL,
-      table_name TEXT NOT NULL,
-      operation TEXT NOT NULL,
-      row_identifier TEXT,
-      old_values TEXT,
-      new_values TEXT,
-      user_id TEXT NOT NULL,
-      applied_at TEXT NOT NULL,
-      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_data_change_logs_connection_id ON data_change_logs(connection_id);
-    CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(table_name);
-    CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id);
-    CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at);
-  `);
-}
-
-function migrateSchema(database: Database.Database) {
-  // Check if connections table exists and needs user_id column
-  const tableExists = database.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='connections'"
-  ).get();
-  
-  if (tableExists) {
-    const columns = database.prepare("PRAGMA table_info(connections)").all() as Array<{ name: string }>;
-    const hasUserId = columns.some((col) => col.name === 'user_id');
-    
-    if (!hasUserId) {
-      database.exec("ALTER TABLE connections ADD COLUMN user_id TEXT REFERENCES users(id)");
-      database.exec("CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id)");
-    }
-  }
-}
+import { getDbClient, getDbType, type DbRow } from './db-client';
 
 // User types
 export interface User {
@@ -282,7 +20,24 @@ export interface Session {
   createdAt: Date;
 }
 
-function rowToUser(row: Record<string, unknown>): User {
+// AI Settings types
+export type AIProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
+
+export interface AISettings {
+  id: string;
+  userId: string;
+  provider: AIProvider;
+  apiKey: string | null;
+  model: string | null;
+  temperature: number;
+  maxTokens: number;
+  baseUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Row converters
+function rowToUser(row: DbRow): User {
   return {
     id: row.id as string,
     email: row.email as string,
@@ -293,7 +48,7 @@ function rowToUser(row: Record<string, unknown>): User {
   };
 }
 
-function rowToSession(row: Record<string, unknown>): Session {
+function rowToSession(row: DbRow): Session {
   return {
     id: row.id as string,
     userId: row.user_id as string,
@@ -302,7 +57,8 @@ function rowToSession(row: Record<string, unknown>): Session {
   };
 }
 
-function rowToConnection(row: Record<string, unknown>): DatabaseConnection {
+function rowToConnection(row: DbRow): DatabaseConnection {
+  const dbType = getDbType();
   return {
     id: row.id as string,
     name: row.name as string,
@@ -312,129 +68,156 @@ function rowToConnection(row: Record<string, unknown>): DatabaseConnection {
     database: row.database_name as string,
     username: row.username as string,
     password: decrypt(row.password as string),
-    ssl: Boolean(row.ssl),
+    ssl: dbType === 'postgres' ? Boolean(row.ssl) : Boolean(row.ssl),
     color: row.color as string | undefined,
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
   };
 }
 
+function rowToAISettings(row: DbRow): AISettings {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    provider: row.provider as AIProvider,
+    apiKey: row.api_key ? decrypt(row.api_key as string) : null,
+    model: row.model as string | null,
+    temperature: row.temperature as number,
+    maxTokens: row.max_tokens as number,
+    baseUrl: row.base_url as string | null,
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  };
+}
+
 // User functions
-export function createUser(user: { id: string; email: string; passwordHash: string; name?: string }): User {
-  const database = getDb();
+export async function createUser(user: { id: string; email: string; passwordHash: string; name?: string }): Promise<User> {
+  const client = getDbClient();
   const now = new Date().toISOString();
   
-  const stmt = database.prepare(`
-    INSERT INTO users (id, email, password_hash, name, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+  await client.execute(
+    `INSERT INTO users (id, email, password_hash, name, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [user.id, user.email.toLowerCase(), user.passwordHash, user.name || null, now, now]
+  );
   
-  stmt.run(user.id, user.email, user.passwordHash, user.name || null, now, now);
-  return getUserById(user.id)!;
+  const created = await getUserById(user.id);
+  if (!created) throw new Error('Failed to create user');
+  return created;
 }
 
-export function getUserById(id: string): User | null {
-  const database = getDb();
-  const row = database.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  return row ? rowToUser(row as Record<string, unknown>) : null;
+export async function getUserById(id: string): Promise<User | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM users WHERE id = ?', [id]);
+  return row ? rowToUser(row) : null;
 }
 
-export function getUserByEmail(email: string): User | null {
-  const database = getDb();
-  const row = database.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
-  return row ? rowToUser(row as Record<string, unknown>) : null;
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+  return row ? rowToUser(row) : null;
 }
 
 // Session functions
-export function createSession(session: { id: string; userId: string; expiresAt: Date }): Session {
-  const database = getDb();
+export async function createSession(session: { id: string; userId: string; expiresAt: Date }): Promise<Session> {
+  const client = getDbClient();
   const now = new Date().toISOString();
   
-  const stmt = database.prepare(`
-    INSERT INTO sessions (id, user_id, expires_at, created_at)
-    VALUES (?, ?, ?, ?)
-  `);
+  await client.execute(
+    `INSERT INTO sessions (id, user_id, expires_at, created_at)
+     VALUES (?, ?, ?, ?)`,
+    [session.id, session.userId, session.expiresAt.toISOString(), now]
+  );
   
-  stmt.run(session.id, session.userId, session.expiresAt.toISOString(), now);
-  return getSessionById(session.id)!;
+  const created = await getSessionById(session.id);
+  if (!created) throw new Error('Failed to create session');
+  return created;
 }
 
-export function getSessionById(id: string): Session | null {
-  const database = getDb();
-  const row = database.prepare('SELECT * FROM sessions WHERE id = ?').get(id);
-  return row ? rowToSession(row as Record<string, unknown>) : null;
+export async function getSessionById(id: string): Promise<Session | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM sessions WHERE id = ?', [id]);
+  return row ? rowToSession(row) : null;
 }
 
-export function getValidSession(id: string): Session | null {
-  const database = getDb();
-  const row = database.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > ?').get(id, new Date().toISOString());
-  return row ? rowToSession(row as Record<string, unknown>) : null;
+export async function getValidSession(id: string): Promise<Session | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>(
+    'SELECT * FROM sessions WHERE id = ? AND expires_at > ?',
+    [id, new Date().toISOString()]
+  );
+  return row ? rowToSession(row) : null;
 }
 
-export function deleteSession(id: string): boolean {
-  const database = getDb();
-  const result = database.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+export async function deleteSession(id: string): Promise<boolean> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM sessions WHERE id = ?', [id]);
   return result.changes > 0;
 }
 
-export function deleteExpiredSessions(): number {
-  const database = getDb();
-  const result = database.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
+export async function deleteExpiredSessions(): Promise<number> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM sessions WHERE expires_at < ?', [new Date().toISOString()]);
   return result.changes;
 }
 
 // Connection functions (with user filtering)
-export function getAllConnections(userId?: string): DatabaseConnection[] {
-  const database = getDb();
+export async function getAllConnections(userId?: string): Promise<DatabaseConnection[]> {
+  const client = getDbClient();
   if (userId) {
-    const rows = database.prepare('SELECT * FROM connections WHERE user_id = ? ORDER BY name').all(userId);
-    return rows.map((row) => rowToConnection(row as Record<string, unknown>));
+    const rows = await client.query<DbRow>('SELECT * FROM connections WHERE user_id = ? ORDER BY name', [userId]);
+    return rows.map((row) => rowToConnection(row));
   }
-  const rows = database.prepare('SELECT * FROM connections ORDER BY name').all();
-  return rows.map((row) => rowToConnection(row as Record<string, unknown>));
+  const rows = await client.query<DbRow>('SELECT * FROM connections ORDER BY name');
+  return rows.map((row) => rowToConnection(row));
 }
 
-export function getConnectionById(id: string, userId?: string): DatabaseConnection | null {
-  const database = getDb();
+export async function getConnectionById(id: string, userId?: string): Promise<DatabaseConnection | null> {
+  const client = getDbClient();
   if (userId) {
-    const row = database.prepare('SELECT * FROM connections WHERE id = ? AND user_id = ?').get(id, userId);
-    return row ? rowToConnection(row as Record<string, unknown>) : null;
+    const row = await client.queryOne<DbRow>('SELECT * FROM connections WHERE id = ? AND user_id = ?', [id, userId]);
+    return row ? rowToConnection(row) : null;
   }
-  const row = database.prepare('SELECT * FROM connections WHERE id = ?').get(id);
-  return row ? rowToConnection(row as Record<string, unknown>) : null;
+  const row = await client.queryOne<DbRow>('SELECT * FROM connections WHERE id = ?', [id]);
+  return row ? rowToConnection(row) : null;
 }
 
-export function createConnection(connection: Omit<DatabaseConnection, 'createdAt' | 'updatedAt'>, userId?: string): DatabaseConnection {
-  const database = getDb();
+export async function createConnection(connection: Omit<DatabaseConnection, 'createdAt' | 'updatedAt'>, userId?: string): Promise<DatabaseConnection> {
+  const client = getDbClient();
+  const dbType = getDbType();
   const now = new Date().toISOString();
   
-  const stmt = database.prepare(`
-    INSERT INTO connections (id, user_id, name, type, host, port, database_name, username, password, ssl, color, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  const sslValue = dbType === 'postgres' ? connection.ssl : (connection.ssl ? 1 : 0);
   
-  stmt.run(
-    connection.id,
-    userId || null,
-    connection.name,
-    connection.type,
-    connection.host,
-    connection.port,
-    connection.database,
-    connection.username,
-    encrypt(connection.password),
-    connection.ssl ? 1 : 0,
-    connection.color || null,
-    now,
-    now
+  await client.execute(
+    `INSERT INTO connections (id, user_id, name, type, host, port, database_name, username, password, ssl, color, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      connection.id,
+      userId || null,
+      connection.name,
+      connection.type,
+      connection.host,
+      connection.port,
+      connection.database,
+      connection.username,
+      encrypt(connection.password),
+      sslValue,
+      connection.color || null,
+      now,
+      now
+    ]
   );
   
-  return getConnectionById(connection.id)!;
+  const created = await getConnectionById(connection.id);
+  if (!created) throw new Error('Failed to create connection');
+  return created;
 }
 
-export function updateConnection(id: string, updates: Partial<Omit<DatabaseConnection, 'id' | 'createdAt' | 'updatedAt'>>): DatabaseConnection | null {
-  const database = getDb();
-  const existing = getConnectionById(id);
+export async function updateConnection(id: string, updates: Partial<Omit<DatabaseConnection, 'id' | 'createdAt' | 'updatedAt'>>): Promise<DatabaseConnection | null> {
+  const client = getDbClient();
+  const dbType = getDbType();
+  const existing = await getConnectionById(id);
   if (!existing) return null;
   
   const now = new Date().toISOString();
@@ -471,7 +254,7 @@ export function updateConnection(id: string, updates: Partial<Omit<DatabaseConne
   }
   if (updates.ssl !== undefined) {
     fields.push('ssl = ?');
-    values.push(updates.ssl ? 1 : 0);
+    values.push(dbType === 'postgres' ? updates.ssl : (updates.ssl ? 1 : 0));
   }
   if (updates.color !== undefined) {
     fields.push('color = ?');
@@ -480,73 +263,39 @@ export function updateConnection(id: string, updates: Partial<Omit<DatabaseConne
   
   values.push(id);
   
-  const stmt = database.prepare(`UPDATE connections SET ${fields.join(', ')} WHERE id = ?`);
-  stmt.run(...values);
+  await client.execute(`UPDATE connections SET ${fields.join(', ')} WHERE id = ?`, values);
   
   return getConnectionById(id);
 }
 
-export function deleteConnection(id: string): boolean {
-  const database = getDb();
-  const result = database.prepare('DELETE FROM connections WHERE id = ?').run(id);
+export async function deleteConnection(id: string): Promise<boolean> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM connections WHERE id = ?', [id]);
   return result.changes > 0;
 }
 
-// AI Settings types and functions
-export type AIProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
-
-export interface AISettings {
-  id: string;
-  userId: string;
-  provider: AIProvider;
-  apiKey: string | null;
-  model: string | null;
-  temperature: number;
-  maxTokens: number;
-  baseUrl: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+// AI Settings functions
+export async function getAISettings(userId: string): Promise<AISettings | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM ai_settings WHERE user_id = ?', [userId]);
+  return row ? rowToAISettings(row) : null;
 }
 
-function rowToAISettings(row: Record<string, unknown>): AISettings {
-  return {
-    id: row.id as string,
-    userId: row.user_id as string,
-    provider: row.provider as AIProvider,
-    apiKey: row.api_key ? decrypt(row.api_key as string) : null,
-    model: row.model as string | null,
-    temperature: row.temperature as number,
-    maxTokens: row.max_tokens as number,
-    baseUrl: row.base_url as string | null,
-    createdAt: new Date(row.created_at as string),
-    updatedAt: new Date(row.updated_at as string),
-  };
-}
-
-export function getAISettings(userId: string): AISettings | null {
-  const database = getDb();
-  const row = database.prepare('SELECT * FROM ai_settings WHERE user_id = ?').get(userId);
-  return row ? rowToAISettings(row as Record<string, unknown>) : null;
-}
-
-export function saveAISettings(userId: string, settings: {
+export async function saveAISettings(userId: string, settings: {
   provider: AIProvider;
   apiKey?: string | null;
   model?: string | null;
   temperature?: number;
   maxTokens?: number;
   baseUrl?: string | null;
-}): AISettings {
-  const database = getDb();
+}): Promise<AISettings> {
+  const client = getDbClient();
   const now = new Date().toISOString();
-  const existing = getAISettings(userId);
+  const existing = await getAISettings(userId);
   
   if (existing) {
-    const fields: string[] = ['updated_at = ?'];
-    const values: unknown[] = [now];
-    
-    fields.push('provider = ?');
-    values.push(settings.provider);
+    const fields: string[] = ['updated_at = ?', 'provider = ?'];
+    const values: unknown[] = [now, settings.provider];
     
     if (settings.apiKey !== undefined) {
       fields.push('api_key = ?');
@@ -570,31 +319,34 @@ export function saveAISettings(userId: string, settings: {
     }
     
     values.push(userId);
-    database.prepare(`UPDATE ai_settings SET ${fields.join(', ')} WHERE user_id = ?`).run(...values);
+    await client.execute(`UPDATE ai_settings SET ${fields.join(', ')} WHERE user_id = ?`, values);
   } else {
-    const id = require('uuid').v4();
-    database.prepare(`
-      INSERT INTO ai_settings (id, user_id, provider, api_key, model, temperature, max_tokens, base_url, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      userId,
-      settings.provider,
-      settings.apiKey ? encrypt(settings.apiKey) : null,
-      settings.model || null,
-      settings.temperature ?? 0.7,
-      settings.maxTokens ?? 2048,
-      settings.baseUrl || null,
-      now,
-      now
+    const id = uuidv4();
+    await client.execute(
+      `INSERT INTO ai_settings (id, user_id, provider, api_key, model, temperature, max_tokens, base_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        userId,
+        settings.provider,
+        settings.apiKey ? encrypt(settings.apiKey) : null,
+        settings.model || null,
+        settings.temperature ?? 0.7,
+        settings.maxTokens ?? 2048,
+        settings.baseUrl || null,
+        now,
+        now
+      ]
     );
   }
   
-  return getAISettings(userId)!;
+  const result = await getAISettings(userId);
+  if (!result) throw new Error('Failed to save AI settings');
+  return result;
 }
 
-export function deleteAISettings(userId: string): boolean {
-  const database = getDb();
-  const result = database.prepare('DELETE FROM ai_settings WHERE user_id = ?').run(userId);
+export async function deleteAISettings(userId: string): Promise<boolean> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM ai_settings WHERE user_id = ?', [userId]);
   return result.changes > 0;
 }

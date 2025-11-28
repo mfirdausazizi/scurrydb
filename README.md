@@ -188,9 +188,30 @@ npm run dev
 
 ## Deployment
 
-### Deploy to Vercel with Turso (Recommended)
+ScurryDB supports multiple database backends for the application database:
 
-ScurryDB can be deployed to Vercel using **Turso** as a serverless SQLite database.
+| Backend | Best For | Free Tier |
+|---------|----------|-----------|
+| **SQLite** | Local development | Free (self-hosted) |
+| **Turso** | Serverless (Vercel) | 8GB + 1B reads |
+| **PostgreSQL** | Production with teams | Varies by provider |
+
+### Deploy to Vercel with PostgreSQL (Recommended for Teams)
+
+PostgreSQL provides better concurrent write handling for team collaboration features.
+
+**Recommended PostgreSQL providers:**
+- **Neon** - 512 MB free tier, serverless
+- **Supabase** - 500 MB free tier
+- **Vercel Postgres** - Native integration
+
+**Environment Variables:**
+```bash
+DATABASE_URL=postgres://user:password@host:5432/scurrydb
+ENCRYPTION_KEY=your-32-char-key
+```
+
+### Deploy to Vercel with Turso
 
 **Quick Setup:**
 ```bash
@@ -198,22 +219,21 @@ cd scurry
 ./scripts/setup-turso.sh
 ```
 
-Then follow the instructions to add environment variables to Vercel.
-
-📖 **Detailed guide:** See [`scurry/README_TURSO.md`](scurry/README_TURSO.md) and [`scurry/VERCEL_DEPLOYMENT.md`](scurry/VERCEL_DEPLOYMENT.md)
-
-**Why Turso?**
-- ✅ SQLite-compatible (no code changes)
-- ✅ Serverless-friendly (works with Vercel)
-- ✅ Free tier: 8GB storage + 1B reads/month
-- ✅ Global edge replicas for low latency
-
-**Environment Variables for Vercel:**
+**Environment Variables:**
 ```bash
 TURSO_DATABASE_URL=libsql://scurrydb-yourorg.turso.io
 TURSO_AUTH_TOKEN=your-auth-token
 ENCRYPTION_KEY=your-32-char-key
 ```
+
+📖 **Detailed guide:** See [`scurry/VERCEL_DEPLOYMENT.md`](scurry/VERCEL_DEPLOYMENT.md)
+
+### Database Auto-Detection
+
+ScurryDB automatically selects the database based on environment variables:
+1. `DATABASE_URL=postgres://...` → PostgreSQL
+2. `TURSO_DATABASE_URL` set → Turso
+3. Neither set → SQLite (local file)
 
 ### Other Deployment Options
 
@@ -230,6 +250,9 @@ ENCRYPTION_KEY=your-32-char-key
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ENCRYPTION_KEY` | Yes | — | 32-character key for encrypting connection passwords |
+| `DATABASE_URL` | No | — | PostgreSQL connection string (production) |
+| `TURSO_DATABASE_URL` | No | — | Turso database URL (serverless) |
+| `TURSO_AUTH_TOKEN` | No | — | Turso authentication token |
 | `PORT` | No | `3000` | Port to run the server on |
 | `NODE_ENV` | No | `development` | Environment (`development` or `production`) |
 | `OPENAI_API_KEY` | No | — | OpenAI API key for AI features |

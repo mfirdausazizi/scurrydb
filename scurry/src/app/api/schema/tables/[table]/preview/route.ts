@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const connection = getConnectionById(connectionId);
+    const connection = await getConnectionById(connectionId);
     if (!connection) {
       return NextResponse.json(
         { error: 'Connection not found' },

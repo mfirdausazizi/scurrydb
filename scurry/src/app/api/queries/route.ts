@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const teamId = searchParams.get('teamId');
     const includeTeamQueries = searchParams.get('includeTeam') === 'true';
 
-    const queries = getUserSavedQueries(user.id, {
+    const queries = await getUserSavedQueries(user.id, {
       teamId: teamId || undefined,
       includeTeamQueries,
     });
@@ -49,13 +49,13 @@ export async function POST(request: NextRequest) {
 
     // If sharing with a team, verify user has access
     if (teamId) {
-      const role = getUserRoleInTeam(teamId, user.id);
+      const role = await getUserRoleInTeam(teamId, user.id);
       if (!role || role === 'viewer') {
         return NextResponse.json({ error: 'Cannot save queries to this team' }, { status: 403 });
       }
     }
 
-    const query = createSavedQuery({
+    const query = await createSavedQuery({
       userId: user.id,
       teamId: teamId || null,
       connectionId: connectionId || null,
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Log activity
-    logActivity({
+    await logActivity({
       teamId: teamId || null,
       userId: user.id,
       action: teamId ? 'query_shared' : 'query_saved',

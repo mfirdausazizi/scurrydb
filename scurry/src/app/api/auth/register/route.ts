@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const { name, email, password } = validationResult.data;
     
     // Check if user already exists
-    const existingUser = getUserByEmail(email);
+    const existingUser = await getUserByEmail(email);
     if (existingUser) {
       return NextResponse.json(
         { error: 'An account with this email already exists' },
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     
     // Hash password and create user
     const passwordHash = await hashPassword(password);
-    const user = createUser({
+    const user = await createUser({
       id: uuidv4(),
       email: email.toLowerCase(),
       passwordHash,

@@ -13,11 +13,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params;
     
-    if (!canUserAccessQuery(user.id, id)) {
+    const canAccess = await canUserAccessQuery(user.id, id);
+    if (!canAccess) {
       return NextResponse.json({ error: 'Query not found' }, { status: 404 });
     }
 
-    const query = getSavedQueryById(id);
+    const query = await getSavedQueryById(id);
     if (!query) {
       return NextResponse.json({ error: 'Query not found' }, { status: 404 });
     }
@@ -38,7 +39,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params;
     
-    if (!canUserModifyQuery(user.id, id)) {
+    const canModify = await canUserModifyQuery(user.id, id);
+    if (!canModify) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -52,14 +54,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const existingQuery = getSavedQueryById(id);
-    const query = updateSavedQuery(id, validationResult.data);
+    const existingQuery = await getSavedQueryById(id);
+    const query = await updateSavedQuery(id, validationResult.data);
     if (!query) {
       return NextResponse.json({ error: 'Query not found' }, { status: 404 });
     }
 
     // Log activity
-    logActivity({
+    await logActivity({
       teamId: query.teamId,
       userId: user.id,
       action: 'query_updated',
@@ -70,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // If query was just shared with a team, log that too
     if (!existingQuery?.teamId && query.teamId) {
-      logActivity({
+      await logActivity({
         teamId: query.teamId,
         userId: user.id,
         action: 'query_shared',
@@ -96,19 +98,20 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const { id } = await params;
     
-    if (!canUserModifyQuery(user.id, id)) {
+    const canModify = await canUserModifyQuery(user.id, id);
+    if (!canModify) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const query = getSavedQueryById(id);
-    const deleted = deleteSavedQuery(id);
+    const query = await getSavedQueryById(id);
+    const deleted = await deleteSavedQuery(id);
     if (!deleted) {
       return NextResponse.json({ error: 'Query not found' }, { status: 404 });
     }
 
     // Log activity
     if (query) {
-      logActivity({
+      await logActivity({
         teamId: query.teamId,
         userId: user.id,
         action: 'query_deleted',

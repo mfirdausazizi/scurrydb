@@ -18,12 +18,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!role) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    const connections = getTeamSharedConnections(id);
+    const connections = await getTeamSharedConnections(id);
     
     // Don't expose passwords in the response
     const sanitized = connections.map((sc) => ({
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     
     // Members and above can share connections
     if (!role || role === 'viewer') {
@@ -71,12 +71,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { connectionId, permission } = validationResult.data;
 
     // Verify the user owns this connection
-    const connection = getConnectionById(connectionId, user.id);
+    const connection = await getConnectionById(connectionId, user.id);
     if (!connection) {
       return NextResponse.json({ error: 'Connection not found or you do not own it' }, { status: 404 });
     }
 
-    const shared = shareConnection({
+    const shared = await shareConnection({
       connectionId,
       teamId: id,
       sharedBy: user.id,
@@ -104,7 +104,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!canManageTeam(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -116,7 +116,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Connection ID is required' }, { status: 400 });
     }
 
-    const removed = unshareConnection(connectionId, id);
+    const removed = await unshareConnection(connectionId, id);
     if (!removed) {
       return NextResponse.json({ error: 'Shared connection not found' }, { status: 404 });
     }

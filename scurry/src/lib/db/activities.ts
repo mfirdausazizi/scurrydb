@@ -1,24 +1,6 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { getUserTeams } from './teams';
-
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
-
-let db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (!db) {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-  }
-  return db;
-}
+import { getDbClient, getDbType, type DbRow } from './db-client';
 
 export type ActivityAction =
   | 'query_saved'
@@ -59,7 +41,8 @@ export interface Activity {
   };
 }
 
-function rowToActivity(row: Record<string, unknown>): Activity {
+function rowToActivity(row: DbRow): Activity {
+  const dbType = getDbType();
   const activity: Activity = {
     id: row.id as string,
     teamId: row.team_id as string | null,
@@ -67,7 +50,11 @@ function rowToActivity(row: Record<string, unknown>): Activity {
     action: row.action as ActivityAction,
     resourceType: row.resource_type as ResourceType | null,
     resourceId: row.resource_id as string | null,
-    metadata: row.metadata ? JSON.parse(row.metadata as string) : null,
+    metadata: row.metadata 
+      ? (dbType === 'postgres' 
+          ? (row.metadata as Record<string, unknown>) 
+          : JSON.parse(row.metadata as string)) 
+      : null,
     createdAt: new Date(row.created_at as string),
   };
 
@@ -90,38 +77,46 @@ function rowToActivity(row: Record<string, unknown>): Activity {
   return activity;
 }
 
-export function logActivity(data: {
+export async function logActivity(data: {
   teamId?: string | null;
   userId: string;
   action: ActivityAction;
   resourceType?: ResourceType | null;
   resourceId?: string | null;
   metadata?: Record<string, unknown> | null;
-}): Activity {
-  const database = getDb();
+}): Promise<Activity> {
+  const client = getDbClient();
+  const dbType = getDbType();
   const now = new Date().toISOString();
   const id = uuidv4();
 
-  database.prepare(`
-    INSERT INTO activities (id, team_id, user_id, action, resource_type, resource_id, metadata, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    data.teamId || null,
-    data.userId,
-    data.action,
-    data.resourceType || null,
-    data.resourceId || null,
-    data.metadata ? JSON.stringify(data.metadata) : null,
-    now
+  const metadataValue = data.metadata 
+    ? (dbType === 'postgres' ? JSON.stringify(data.metadata) : JSON.stringify(data.metadata))
+    : null;
+
+  await client.execute(
+    `INSERT INTO activities (id, team_id, user_id, action, resource_type, resource_id, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.teamId || null,
+      data.userId,
+      data.action,
+      data.resourceType || null,
+      data.resourceId || null,
+      metadataValue,
+      now
+    ]
   );
 
-  return getActivityById(id)!;
+  const activity = await getActivityById(id);
+  if (!activity) throw new Error('Failed to log activity');
+  return activity;
 }
 
-export function getActivityById(id: string): Activity | null {
-  const database = getDb();
-  const row = database.prepare(`
+export async function getActivityById(id: string): Promise<Activity | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>(`
     SELECT 
       a.*,
       u.email as user_email,
@@ -132,23 +127,24 @@ export function getActivityById(id: string): Activity | null {
     LEFT JOIN users u ON a.user_id = u.id
     LEFT JOIN teams t ON a.team_id = t.id
     WHERE a.id = ?
-  `).get(id);
+  `, [id]);
 
-  return row ? rowToActivity(row as Record<string, unknown>) : null;
+  return row ? rowToActivity(row) : null;
 }
 
-export function getUserActivityFeed(userId: string, options?: {
+export async function getUserActivityFeed(userId: string, options?: {
   limit?: number;
   offset?: number;
   teamId?: string | null;
-}): Activity[] {
-  const database = getDb();
+}): Promise<Activity[]> {
+  const client = getDbClient();
+  const dbType = getDbType();
   const limit = options?.limit || 50;
   const offset = options?.offset || 0;
 
   if (options?.teamId) {
     // Get activities for a specific team
-    const rows = database.prepare(`
+    const rows = await client.query<DbRow>(`
       SELECT 
         a.*,
         u.email as user_email,
@@ -161,18 +157,18 @@ export function getUserActivityFeed(userId: string, options?: {
       WHERE a.team_id = ?
       ORDER BY a.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(options.teamId, limit, offset) as Array<Record<string, unknown>>;
+    `, [options.teamId, limit, offset]);
 
     return rows.map(rowToActivity);
   }
 
   // Get user's personal activities + all team activities they have access to
-  const userTeams = getUserTeams(userId);
+  const userTeams = await getUserTeams(userId);
   const teamIds = userTeams.map(t => t.id);
 
   if (teamIds.length === 0) {
     // Just personal activities (no team)
-    const rows = database.prepare(`
+    const rows = await client.query<DbRow>(`
       SELECT 
         a.*,
         u.email as user_email,
@@ -185,27 +181,48 @@ export function getUserActivityFeed(userId: string, options?: {
       WHERE a.user_id = ? AND a.team_id IS NULL
       ORDER BY a.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(userId, limit, offset) as Array<Record<string, unknown>>;
+    `, [userId, limit, offset]);
 
     return rows.map(rowToActivity);
   }
 
-  const placeholders = teamIds.map(() => '?').join(', ');
-  const rows = database.prepare(`
-    SELECT 
-      a.*,
-      u.email as user_email,
-      u.name as user_name,
-      t.name as team_name,
-      t.slug as team_slug
-    FROM activities a
-    LEFT JOIN users u ON a.user_id = u.id
-    LEFT JOIN teams t ON a.team_id = t.id
-    WHERE (a.user_id = ? AND a.team_id IS NULL) OR a.team_id IN (${placeholders})
-    ORDER BY a.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(userId, ...teamIds, limit, offset) as Array<Record<string, unknown>>;
+  // Build query with team IDs
+  const placeholders = teamIds.map((_, i) => {
+    if (dbType === 'postgres') {
+      return `$${i + 2}`; // Start from $2
+    }
+    return '?';
+  }).join(', ');
 
+  const params = [userId, ...teamIds, limit, offset];
+  
+  const sql = dbType === 'postgres'
+    ? `SELECT 
+        a.*,
+        u.email as user_email,
+        u.name as user_name,
+        t.name as team_name,
+        t.slug as team_slug
+      FROM activities a
+      LEFT JOIN users u ON a.user_id = u.id
+      LEFT JOIN teams t ON a.team_id = t.id
+      WHERE (a.user_id = $1 AND a.team_id IS NULL) OR a.team_id IN (${placeholders})
+      ORDER BY a.created_at DESC
+      LIMIT $${teamIds.length + 2} OFFSET $${teamIds.length + 3}`
+    : `SELECT 
+        a.*,
+        u.email as user_email,
+        u.name as user_name,
+        t.name as team_name,
+        t.slug as team_slug
+      FROM activities a
+      LEFT JOIN users u ON a.user_id = u.id
+      LEFT JOIN teams t ON a.team_id = t.id
+      WHERE (a.user_id = ? AND a.team_id IS NULL) OR a.team_id IN (${placeholders})
+      ORDER BY a.created_at DESC
+      LIMIT ? OFFSET ?`;
+
+  const rows = await client.query<DbRow>(sql, params);
   return rows.map(rowToActivity);
 }
 
@@ -247,11 +264,11 @@ export function getActivityDescription(activity: Activity): string {
   }
 }
 
-export function deleteOldActivities(daysToKeep: number = 90): number {
-  const database = getDb();
+export async function deleteOldActivities(daysToKeep: number = 90): Promise<number> {
+  const client = getDbClient();
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
-  const result = database.prepare('DELETE FROM activities WHERE created_at < ?').run(cutoffDate.toISOString());
+  const result = await client.execute('DELETE FROM activities WHERE created_at < ?', [cutoffDate.toISOString()]);
   return result.changes;
 }

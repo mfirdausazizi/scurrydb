@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const teams = getUserTeams(user.id);
+    const teams = await getUserTeams(user.id);
     return NextResponse.json(teams);
   } catch (error) {
     console.error('Failed to get teams:', error);
@@ -38,11 +38,12 @@ export async function POST(request: NextRequest) {
     const { name, slug } = validationResult.data;
 
     // Check if slug is available
-    if (!isTeamSlugAvailable(slug)) {
+    const slugAvailable = await isTeamSlugAvailable(slug);
+    if (!slugAvailable) {
       return NextResponse.json({ error: 'Team slug is already taken' }, { status: 409 });
     }
 
-    const team = createTeam({ name, slug, ownerId: user.id });
+    const team = await createTeam({ name, slug, ownerId: user.id });
     return NextResponse.json(team, { status: 201 });
   } catch (error) {
     console.error('Failed to create team:', error);

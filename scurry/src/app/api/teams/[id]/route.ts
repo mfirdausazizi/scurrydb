@@ -11,12 +11,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!role) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    const team = getTeamById(id);
+    const team = await getTeamById(id);
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
@@ -36,7 +36,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!canManageTeam(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const team = updateTeam(id, validationResult.data);
+    const team = await updateTeam(id, validationResult.data);
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
@@ -71,12 +71,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
-    const role = getUserRoleInTeam(id, user.id);
+    const role = await getUserRoleInTeam(id, user.id);
     if (!canDeleteTeam(role)) {
       return NextResponse.json({ error: 'Only the team owner can delete the team' }, { status: 403 });
     }
 
-    const deleted = deleteTeam(id);
+    const deleted = await deleteTeam(id);
     if (!deleted) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }

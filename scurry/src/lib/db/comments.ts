@@ -1,23 +1,5 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
-
-let db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (!db) {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-  }
-  return db;
-}
+import { getDbClient, type DbRow } from './db-client';
 
 export interface QueryComment {
   id: string;
@@ -33,7 +15,7 @@ export interface QueryComment {
   };
 }
 
-function rowToComment(row: Record<string, unknown>): QueryComment {
+function rowToComment(row: DbRow): QueryComment {
   const comment: QueryComment = {
     id: row.id as string,
     queryId: row.query_id as string,
@@ -54,26 +36,29 @@ function rowToComment(row: Record<string, unknown>): QueryComment {
   return comment;
 }
 
-export function createComment(data: {
+export async function createComment(data: {
   queryId: string;
   userId: string;
   content: string;
-}): QueryComment {
-  const database = getDb();
+}): Promise<QueryComment> {
+  const client = getDbClient();
   const now = new Date().toISOString();
   const id = uuidv4();
 
-  database.prepare(`
-    INSERT INTO query_comments (id, query_id, user_id, content, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, data.queryId, data.userId, data.content, now, now);
+  await client.execute(
+    `INSERT INTO query_comments (id, query_id, user_id, content, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, data.queryId, data.userId, data.content, now, now]
+  );
 
-  return getCommentById(id)!;
+  const comment = await getCommentById(id);
+  if (!comment) throw new Error('Failed to create comment');
+  return comment;
 }
 
-export function getCommentById(id: string): QueryComment | null {
-  const database = getDb();
-  const row = database.prepare(`
+export async function getCommentById(id: string): Promise<QueryComment | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>(`
     SELECT 
       c.*,
       u.email as user_email,
@@ -81,14 +66,14 @@ export function getCommentById(id: string): QueryComment | null {
     FROM query_comments c
     LEFT JOIN users u ON c.user_id = u.id
     WHERE c.id = ?
-  `).get(id);
+  `, [id]);
 
-  return row ? rowToComment(row as Record<string, unknown>) : null;
+  return row ? rowToComment(row) : null;
 }
 
-export function getQueryComments(queryId: string): QueryComment[] {
-  const database = getDb();
-  const rows = database.prepare(`
+export async function getQueryComments(queryId: string): Promise<QueryComment[]> {
+  const client = getDbClient();
+  const rows = await client.query<DbRow>(`
     SELECT 
       c.*,
       u.email as user_email,
@@ -97,31 +82,32 @@ export function getQueryComments(queryId: string): QueryComment[] {
     LEFT JOIN users u ON c.user_id = u.id
     WHERE c.query_id = ?
     ORDER BY c.created_at ASC
-  `).all(queryId) as Array<Record<string, unknown>>;
+  `, [queryId]);
 
   return rows.map(rowToComment);
 }
 
-export function updateComment(id: string, content: string): QueryComment | null {
-  const database = getDb();
+export async function updateComment(id: string, content: string): Promise<QueryComment | null> {
+  const client = getDbClient();
   const now = new Date().toISOString();
   
-  const result = database.prepare(`
-    UPDATE query_comments SET content = ?, updated_at = ? WHERE id = ?
-  `).run(content, now, id);
+  const result = await client.execute(
+    `UPDATE query_comments SET content = ?, updated_at = ? WHERE id = ?`,
+    [content, now, id]
+  );
 
   if (result.changes === 0) return null;
   return getCommentById(id);
 }
 
-export function deleteComment(id: string): boolean {
-  const database = getDb();
-  const result = database.prepare('DELETE FROM query_comments WHERE id = ?').run(id);
+export async function deleteComment(id: string): Promise<boolean> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM query_comments WHERE id = ?', [id]);
   return result.changes > 0;
 }
 
-export function getCommentCount(queryId: string): number {
-  const database = getDb();
-  const row = database.prepare('SELECT COUNT(*) as count FROM query_comments WHERE query_id = ?').get(queryId) as { count: number };
-  return row.count;
+export async function getCommentCount(queryId: string): Promise<number> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT COUNT(*) as count FROM query_comments WHERE query_id = ?', [queryId]);
+  return row ? Number(row.count) : 0;
 }
