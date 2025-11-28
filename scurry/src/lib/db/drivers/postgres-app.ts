@@ -10,14 +10,18 @@ export function getPostgresPool(): Pool {
       throw new Error('DATABASE_URL or POSTGRES_URL is not set');
     }
 
+    // Determine SSL configuration
+    // Supabase and most cloud providers require SSL
+    const requiresSsl = connectionString.includes('supabase.co') || 
+                        connectionString.includes('neon.tech') ||
+                        process.env.NODE_ENV === 'production';
+    
     pool = new Pool({
       connectionString,
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
-      ssl: process.env.NODE_ENV === 'production' 
-        ? { rejectUnauthorized: false } 
-        : undefined,
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
     });
 
     // Handle pool errors
