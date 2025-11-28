@@ -186,6 +186,43 @@ npm run dev
 
 ---
 
+## Deployment
+
+### Deploy to Vercel with Turso (Recommended)
+
+ScurryDB can be deployed to Vercel using **Turso** as a serverless SQLite database.
+
+**Quick Setup:**
+```bash
+cd scurry
+./scripts/setup-turso.sh
+```
+
+Then follow the instructions to add environment variables to Vercel.
+
+📖 **Detailed guide:** See [`scurry/README_TURSO.md`](scurry/README_TURSO.md) and [`scurry/VERCEL_DEPLOYMENT.md`](scurry/VERCEL_DEPLOYMENT.md)
+
+**Why Turso?**
+- ✅ SQLite-compatible (no code changes)
+- ✅ Serverless-friendly (works with Vercel)
+- ✅ Free tier: 8GB storage + 1B reads/month
+- ✅ Global edge replicas for low latency
+
+**Environment Variables for Vercel:**
+```bash
+TURSO_DATABASE_URL=libsql://scurrydb-yourorg.turso.io
+TURSO_AUTH_TOKEN=your-auth-token
+ENCRYPTION_KEY=your-32-char-key
+```
+
+### Other Deployment Options
+
+- **Docker** (see [Quick Start](#quick-start))
+- **Self-hosted** (Node.js server with SQLite)
+- **Railway**, **Fly.io**, or any Node.js hosting platform
+
+---
+
 ## Configuration
 
 ### Environment Variables
