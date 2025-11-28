@@ -12,8 +12,10 @@ export function getPostgresPool(): Pool {
 
     // Determine SSL configuration
     // Supabase and most cloud providers require SSL
+    // Also detect sslmode in connection string to handle it properly
     const requiresSsl = connectionString.includes('supabase.co') || 
                         connectionString.includes('neon.tech') ||
+                        connectionString.includes('sslmode=') ||
                         process.env.NODE_ENV === 'production';
     
     pool = new Pool({
@@ -21,7 +23,9 @@ export function getPostgresPool(): Pool {
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
-      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+      // Use explicit ssl: false when not required to prevent pg from inferring SSL
+      // from connection string without proper certificate handling
+      ssl: requiresSsl ? { rejectUnauthorized: false } : false,
     });
 
     // Handle pool errors
