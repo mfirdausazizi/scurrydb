@@ -3,7 +3,8 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Users, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   connectionFormSchema,
   databaseTypes,
@@ -37,6 +40,18 @@ import {
   type ConnectionFormData,
 } from '@/lib/validations/connection';
 import type { DatabaseConnection } from '@/types';
+
+interface ShareInfo {
+  teamId: string;
+  teamName: string;
+  permission: 'read' | 'write';
+  sharedAt: Date;
+}
+
+interface AvailableTeam {
+  teamId: string;
+  teamName: string;
+}
 
 interface ConnectionFormProps {
   open: boolean;
@@ -49,6 +64,101 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  
+  // Sharing state
+  const [shares, setShares] = React.useState<ShareInfo[]>([]);
+  const [availableTeams, setAvailableTeams] = React.useState<AvailableTeam[]>([]);
+  const [sharingLoading, setSharingLoading] = React.useState(false);
+  const [selectedTeamToShare, setSelectedTeamToShare] = React.useState<string>('');
+  const [selectedPermission, setSelectedPermission] = React.useState<'read' | 'write'>('read');
+  const [shareActionLoading, setShareActionLoading] = React.useState(false);
+
+  const isEditing = !!connection?.id;
+
+  // Load sharing info when editing an existing connection
+  React.useEffect(() => {
+    if (open && connection?.id) {
+      loadShareInfo(connection.id);
+    } else if (!open) {
+      // Reset sharing state when dialog closes
+      setShares([]);
+      setAvailableTeams([]);
+      setSelectedTeamToShare('');
+    }
+  }, [open, connection?.id]);
+
+  const loadShareInfo = async (connectionId: string) => {
+    setSharingLoading(true);
+    try {
+      const response = await fetch(`/api/connections/${connectionId}/share`);
+      if (response.ok) {
+        const data = await response.json();
+        setShares(data.shares || []);
+        setAvailableTeams(data.availableTeams || []);
+      }
+    } catch (error) {
+      console.error('Failed to load sharing info:', error);
+    } finally {
+      setSharingLoading(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!connection?.id || !selectedTeamToShare) return;
+    
+    setShareActionLoading(true);
+    try {
+      const response = await fetch(`/api/connections/${connection.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamId: selectedTeamToShare,
+          permission: selectedPermission,
+        }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to share');
+      }
+      
+      toast.success('Connection shared with team');
+      setSelectedTeamToShare('');
+      await loadShareInfo(connection.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to share connection');
+    } finally {
+      setShareActionLoading(false);
+    }
+  };
+
+  const handleUnshare = async (teamId: string) => {
+    if (!connection?.id) return;
+    
+    setShareActionLoading(true);
+    try {
+      const response = await fetch(`/api/connections/${connection.id}/share?teamId=${teamId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to unshare');
+      }
+      
+      toast.success('Connection unshared from team');
+      await loadShareInfo(connection.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to unshare connection');
+    } finally {
+      setShareActionLoading(false);
+    }
+  };
+
+  // Filter out teams that the connection is already shared with
+  const unsharedTeams = availableTeams.filter(
+    team => !shares.some(share => share.teamId === team.teamId)
+  );
 
   const form = useForm<ConnectionFormData>({
     resolver: zodResolver(connectionFormSchema),
@@ -300,6 +410,114 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
                   )}
                 />
               </div>
+            )}
+
+            {/* Team Sharing Section - Only shown when editing */}
+            {isEditing && (
+              <>
+                <Separator className="my-4" />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    <span className="font-medium text-sm">Share with Teams</span>
+                  </div>
+                  
+                  {sharingLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <>
+                      {/* Current shares */}
+                      {shares.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">Currently shared with:</p>
+                          <div className="space-y-2">
+                            {shares.map((share) => (
+                              <div
+                                key={share.teamId}
+                                className="flex items-center justify-between rounded-md border p-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-sm">{share.teamName}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {share.permission}
+                                  </Badge>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive hover:text-destructive"
+                                  onClick={() => handleUnshare(share.teamId)}
+                                  disabled={shareActionLoading}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Add new share */}
+                      {unsharedTeams.length > 0 ? (
+                        <div className="flex gap-2">
+                          <Select
+                            value={selectedTeamToShare}
+                            onValueChange={setSelectedTeamToShare}
+                          >
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder="Select team..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {unsharedTeams.map((team) => (
+                                <SelectItem key={team.teamId} value={team.teamId}>
+                                  {team.teamName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={selectedPermission}
+                            onValueChange={(v) => setSelectedPermission(v as 'read' | 'write')}
+                          >
+                            <SelectTrigger className="w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="read">Read</SelectItem>
+                              <SelectItem value="write">Write</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleShare}
+                            disabled={!selectedTeamToShare || shareActionLoading}
+                          >
+                            {shareActionLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Share'
+                            )}
+                          </Button>
+                        </div>
+                      ) : availableTeams.length === 0 && shares.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          You are not an admin of any teams. Join or create a team to share connections.
+                        </p>
+                      ) : shares.length > 0 && unsharedTeams.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          This connection is shared with all your teams.
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </>
             )}
 
             {testResult && (

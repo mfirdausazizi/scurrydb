@@ -26,7 +26,7 @@ const SqlEditor = dynamic(
 );
 
 export default function QueryPage() {
-  const { teamId, isTeamWorkspace } = useWorkspaceContext();
+  const { teamId } = useWorkspaceContext();
   const { connections, loading: connectionsLoading } = useConnections({ teamId });
   const {
     history,
@@ -43,6 +43,16 @@ export default function QueryPage() {
   const [showAI, setShowAI] = React.useState(false);
   
   const isMobile = useMediaQuery('(max-width: 767px)');
+
+  // Check if selected connection is a team/shared connection
+  const selectedConnection = React.useMemo(() => {
+    return connections.find(c => c.id === selectedConnectionId);
+  }, [connections, selectedConnectionId]);
+  
+  const isSelectedConnectionShared = selectedConnection?.isShared === true;
+
+  // Only pass teamId to API calls if the connection is actually a team connection
+  const effectiveTeamId = isSelectedConnectionShared ? teamId : null;
 
   // Reset connection selection when workspace changes
   React.useEffect(() => {
@@ -91,7 +101,7 @@ export default function QueryPage() {
         body: JSON.stringify({
           connectionId: selectedConnectionId,
           sql: currentQuery,
-          teamId: teamId, // Include team context for permission validation
+          teamId: effectiveTeamId, // Only include team context for shared connections
         }),
       });
 

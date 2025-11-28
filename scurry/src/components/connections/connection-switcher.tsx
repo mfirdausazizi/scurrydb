@@ -14,14 +14,19 @@ import {
 import { useConnections } from '@/hooks';
 import { useWorkspaceStore } from '@/lib/store/workspace-store';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
 interface ConnectionSwitcherProps {
     className?: string;
+    /** When true, selecting a connection auto-navigates to /browse */
+    autoNavigate?: boolean;
+    /** Callback when a connection is selected */
+    onSelect?: () => void;
 }
 
-export function ConnectionSwitcher({ className }: ConnectionSwitcherProps) {
+export function ConnectionSwitcher({ className, autoNavigate = false, onSelect }: ConnectionSwitcherProps) {
     const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
     const currentConnectionId = searchParams.get('connection');
     const { activeTeamId } = useWorkspaceStore();
@@ -30,12 +35,27 @@ export function ConnectionSwitcher({ className }: ConnectionSwitcherProps) {
     const activeConnection = connections.find(c => c.id === currentConnectionId);
 
     const handleSelectConnection = (connectionId: string) => {
-        const params = new URLSearchParams(searchParams.toString());
+        const params = new URLSearchParams();
         params.set('connection', connectionId);
         if (activeTeamId) {
             params.set('teamId', activeTeamId);
         }
-        router.push(`/browse?${params.toString()}`);
+        
+        // If autoNavigate is enabled, always go to /browse
+        // Otherwise, stay on current page if it supports connections
+        if (autoNavigate) {
+            router.push(`/browse?${params.toString()}`);
+        } else {
+            // For pages that support connection params, update the URL
+            const connectionPages = ['/browse', '/query'];
+            if (connectionPages.some(p => pathname.startsWith(p))) {
+                router.push(`${pathname}?${params.toString()}`);
+            } else {
+                router.push(`/browse?${params.toString()}`);
+            }
+        }
+        
+        onSelect?.();
     };
 
     return (

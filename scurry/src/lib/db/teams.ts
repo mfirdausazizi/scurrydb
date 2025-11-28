@@ -504,6 +504,47 @@ export async function unshareConnection(connectionId: string, teamId: string): P
   return result.changes > 0;
 }
 
+// Get all teams a connection is shared with (for the connection owner)
+export interface ConnectionShareInfo {
+  teamId: string;
+  teamName: string;
+  permission: ConnectionPermission;
+  sharedAt: Date;
+}
+
+export async function getConnectionShares(connectionId: string, ownerId: string): Promise<ConnectionShareInfo[]> {
+  const client = getDbClient();
+  
+  // First verify the user owns this connection
+  const connection = await client.queryOne<DbRow>(
+    'SELECT id FROM connections WHERE id = ? AND user_id = ?',
+    [connectionId, ownerId]
+  );
+  
+  if (!connection) {
+    return [];
+  }
+  
+  const rows = await client.query<DbRow>(`
+    SELECT 
+      sc.team_id,
+      sc.permission,
+      sc.created_at,
+      t.name as team_name
+    FROM shared_connections sc
+    JOIN teams t ON sc.team_id = t.id
+    WHERE sc.connection_id = ?
+    ORDER BY t.name
+  `, [connectionId]);
+  
+  return rows.map((row) => ({
+    teamId: row.team_id as string,
+    teamName: row.team_name as string,
+    permission: row.permission as ConnectionPermission,
+    sharedAt: new Date(row.created_at as string),
+  }));
+}
+
 export async function getUserAccessibleConnections(userId: string, teamIds: string[]): Promise<DatabaseConnection[]> {
   const client = getDbClient();
   const dbType = getDbType();

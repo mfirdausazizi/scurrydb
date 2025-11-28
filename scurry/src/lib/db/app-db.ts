@@ -118,6 +118,38 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   return row ? rowToUser(row) : null;
 }
 
+export async function updateUser(
+  id: string,
+  updates: { name?: string; email?: string; passwordHash?: string }
+): Promise<User | null> {
+  const client = getDbClient();
+  const existing = await getUserById(id);
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const fields: string[] = ['updated_at = ?'];
+  const values: unknown[] = [now];
+
+  if (updates.name !== undefined) {
+    fields.push('name = ?');
+    values.push(updates.name);
+  }
+  if (updates.email !== undefined) {
+    fields.push('email = ?');
+    values.push(updates.email.toLowerCase());
+  }
+  if (updates.passwordHash !== undefined) {
+    fields.push('password_hash = ?');
+    values.push(updates.passwordHash);
+  }
+
+  values.push(id);
+
+  await client.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+
+  return getUserById(id);
+}
+
 // Session functions
 export async function createSession(session: { id: string; userId: string; expiresAt: Date }): Promise<Session> {
   const client = getDbClient();

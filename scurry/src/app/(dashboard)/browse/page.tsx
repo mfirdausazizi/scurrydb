@@ -105,13 +105,23 @@ function BrowsePageContent() {
     }, 0);
   }, [allPendingChanges]);
 
+  // Check if selected connection is a team/shared connection
+  const selectedConnection = React.useMemo(() => {
+    return connections.find(c => c.id === selectedConnectionId);
+  }, [connections, selectedConnectionId]);
+  
+  const isSelectedConnectionShared = selectedConnection?.isShared === true;
+
+  // Only pass teamId to API calls if the connection is actually a team connection
+  const effectiveTeamId = isSelectedConnectionShared ? teamId : null;
+
   const fetchTables = React.useCallback(async () => {
     if (!selectedConnectionId) return;
     
     setTablesLoading(true);
     try {
       const params = new URLSearchParams({ connectionId: selectedConnectionId });
-      if (teamId) params.set('teamId', teamId);
+      if (effectiveTeamId) params.set('teamId', effectiveTeamId);
       
       const response = await fetch(`/api/schema/tables?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch tables');
@@ -123,7 +133,7 @@ function BrowsePageContent() {
     } finally {
       setTablesLoading(false);
     }
-  }, [selectedConnectionId, teamId]);
+  }, [selectedConnectionId, effectiveTeamId]);
 
   const fetchTableStructure = React.useCallback(async (tableName: string) => {
     if (!selectedConnectionId) return;
@@ -132,7 +142,7 @@ function BrowsePageContent() {
     setPreview(null);
     try {
       const params = new URLSearchParams({ connectionId: selectedConnectionId });
-      if (teamId) params.set('teamId', teamId);
+      if (effectiveTeamId) params.set('teamId', effectiveTeamId);
       
       const response = await fetch(
         `/api/schema/tables/${encodeURIComponent(tableName)}?${params.toString()}`
@@ -147,7 +157,7 @@ function BrowsePageContent() {
     } finally {
       setStructureLoading(false);
     }
-  }, [selectedConnectionId, teamId]);
+  }, [selectedConnectionId, effectiveTeamId]);
 
   const fetchPreview = React.useCallback(async () => {
     if (!selectedConnectionId || !selectedTable) return;
@@ -155,7 +165,7 @@ function BrowsePageContent() {
     setPreviewLoading(true);
     try {
       const params = new URLSearchParams({ connectionId: selectedConnectionId, limit: '100' });
-      if (teamId) params.set('teamId', teamId);
+      if (effectiveTeamId) params.set('teamId', effectiveTeamId);
       
       const response = await fetch(
         `/api/schema/tables/${encodeURIComponent(selectedTable)}/preview?${params.toString()}`
@@ -169,7 +179,7 @@ function BrowsePageContent() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [selectedConnectionId, selectedTable, teamId]);
+  }, [selectedConnectionId, selectedTable, effectiveTeamId]);
 
   // Reset connection selection when workspace changes
   React.useEffect(() => {
