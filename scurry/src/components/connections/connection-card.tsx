@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { MoreHorizontal, Pencil, Trash2, Play, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Play, Loader2, CheckCircle, XCircle, Share2 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,12 +16,21 @@ import type { DatabaseConnection } from '@/types';
 
 interface ConnectionCardProps {
   connection: Omit<DatabaseConnection, 'password'>;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   onConnect: () => void;
+  isShared?: boolean;
+  permission?: string;
 }
 
-export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: ConnectionCardProps) {
+export function ConnectionCard({ 
+  connection, 
+  onEdit, 
+  onDelete, 
+  onConnect,
+  isShared = false,
+  permission,
+}: ConnectionCardProps) {
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null);
 
@@ -82,31 +91,48 @@ export function ConnectionCard({ connection, onEdit, onDelete, onConnect }: Conn
               <Play className="mr-2 h-4 w-4" />
               Connect
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleTest} disabled={testing}>
-              {testing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle className="mr-2 h-4 w-4" />
-              )}
-              Test Connection
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onEdit}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDelete} className="text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
+            {!isShared && (
+              <DropdownMenuItem onClick={handleTest} disabled={testing}>
+                {testing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                )}
+                Test Connection
+              </DropdownMenuItem>
+            )}
+            {!isShared && onEdit && onDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onEdit}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary">{typeLabels[connection.type] || connection.type}</Badge>
             <span className="text-sm text-muted-foreground">{connection.database}</span>
+            {isShared && (
+              <Badge variant="outline" className="gap-1">
+                <Share2 className="h-3 w-3" />
+                Shared
+              </Badge>
+            )}
+            {permission && (
+              <Badge variant={permission === 'write' ? 'default' : 'secondary'}>
+                {permission === 'write' ? 'Read/Write' : 'Read Only'}
+              </Badge>
+            )}
           </div>
           {testResult && (
             <div

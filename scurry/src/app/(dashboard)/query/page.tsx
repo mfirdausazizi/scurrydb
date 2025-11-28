@@ -16,7 +16,7 @@ import { QueryToolbar } from '@/components/editor/query-toolbar';
 import { QueryHistory } from '@/components/editor/query-history';
 import { ChatPanel } from '@/components/ai/chat-panel';
 import { ResultsTable } from '@/components/results';
-import { useConnections, useMediaQuery } from '@/hooks';
+import { useConnections, useMediaQuery, useWorkspaceContext } from '@/hooks';
 import { useQueryStore } from '@/lib/store';
 import type { QueryResult } from '@/types';
 
@@ -26,7 +26,8 @@ const SqlEditor = dynamic(
 );
 
 export default function QueryPage() {
-  const { connections, loading: connectionsLoading } = useConnections();
+  const { teamId, isTeamWorkspace } = useWorkspaceContext();
+  const { connections, loading: connectionsLoading } = useConnections({ teamId });
   const {
     history,
     currentQuery,
@@ -43,11 +44,27 @@ export default function QueryPage() {
   
   const isMobile = useMediaQuery('(max-width: 767px)');
 
+  // Reset connection selection when workspace changes
+  React.useEffect(() => {
+    // Clear selected connection if it's not in the current workspace's connection list
+    if (selectedConnectionId && connections.length > 0) {
+      const connectionExists = connections.some(c => c.id === selectedConnectionId);
+      if (!connectionExists) {
+        setSelectedConnectionId(null, teamId);
+        setResult(null);
+      }
+    } else if (selectedConnectionId && !connectionsLoading && connections.length === 0) {
+      // No connections in this workspace, reset
+      setSelectedConnectionId(null, teamId);
+      setResult(null);
+    }
+  }, [connections, selectedConnectionId, connectionsLoading, teamId, setSelectedConnectionId]);
+
   React.useEffect(() => {
     if (!selectedConnectionId && connections.length > 0) {
-      setSelectedConnectionId(connections[0].id);
+      setSelectedConnectionId(connections[0].id, teamId);
     }
-  }, [connections, selectedConnectionId, setSelectedConnectionId]);
+  }, [connections, selectedConnectionId, setSelectedConnectionId, teamId]);
 
   // Load query from sessionStorage (when coming from saved queries page)
   React.useEffect(() => {
@@ -74,6 +91,7 @@ export default function QueryPage() {
         body: JSON.stringify({
           connectionId: selectedConnectionId,
           sql: currentQuery,
+          teamId: teamId, // Include team context for permission validation
         }),
       });
 

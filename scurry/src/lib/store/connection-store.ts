@@ -5,14 +5,17 @@ import type { DatabaseConnection } from '@/types';
 interface ConnectionState {
   connections: DatabaseConnection[];
   activeConnectionId: string | null;
+  activeConnectionWorkspaceId: string | null; // Track which workspace the active connection belongs to
   sidebarOpen: boolean;
   
   addConnection: (connection: DatabaseConnection) => void;
   updateConnection: (id: string, updates: Partial<DatabaseConnection>) => void;
   removeConnection: (id: string) => void;
-  setActiveConnection: (id: string | null) => void;
+  setActiveConnection: (id: string | null, workspaceId?: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
   getActiveConnection: () => DatabaseConnection | null;
+  clearActiveConnection: () => void;
+  resetForWorkspaceChange: () => void;
 }
 
 export const useConnectionStore = create<ConnectionState>()(
@@ -20,6 +23,7 @@ export const useConnectionStore = create<ConnectionState>()(
     (set, get) => ({
       connections: [],
       activeConnectionId: null,
+      activeConnectionWorkspaceId: null,
       sidebarOpen: true,
 
       addConnection: (connection) =>
@@ -39,10 +43,15 @@ export const useConnectionStore = create<ConnectionState>()(
           connections: state.connections.filter((conn) => conn.id !== id),
           activeConnectionId:
             state.activeConnectionId === id ? null : state.activeConnectionId,
+          activeConnectionWorkspaceId:
+            state.activeConnectionId === id ? null : state.activeConnectionWorkspaceId,
         })),
 
-      setActiveConnection: (id) =>
-        set({ activeConnectionId: id }),
+      setActiveConnection: (id, workspaceId = null) =>
+        set({ 
+          activeConnectionId: id,
+          activeConnectionWorkspaceId: workspaceId,
+        }),
 
       setSidebarOpen: (open) =>
         set({ sidebarOpen: open }),
@@ -54,12 +63,25 @@ export const useConnectionStore = create<ConnectionState>()(
           null
         );
       },
+
+      clearActiveConnection: () =>
+        set({
+          activeConnectionId: null,
+          activeConnectionWorkspaceId: null,
+        }),
+
+      resetForWorkspaceChange: () =>
+        set({
+          activeConnectionId: null,
+          activeConnectionWorkspaceId: null,
+        }),
     }),
     {
       name: 'scurrydb-connections',
       partialize: (state) => ({
         connections: state.connections,
         sidebarOpen: state.sidebarOpen,
+        // Don't persist activeConnectionId - it should be reset on workspace change
       }),
     }
   )

@@ -8,11 +8,13 @@ interface QueryState {
   history: QueryHistoryItem[];
   currentQuery: string;
   selectedConnectionId: string | null;
+  selectedWorkspaceId: string | null; // Track which workspace the selected connection belongs to
 
   setCurrentQuery: (query: string) => void;
-  setSelectedConnectionId: (id: string | null) => void;
+  setSelectedConnectionId: (id: string | null, workspaceId?: string | null) => void;
   addToHistory: (item: Omit<QueryHistoryItem, 'id'>) => void;
   clearHistory: () => void;
+  resetForWorkspaceChange: () => void;
 }
 
 export const useQueryStore = create<QueryState>()(
@@ -21,10 +23,14 @@ export const useQueryStore = create<QueryState>()(
       history: [],
       currentQuery: 'SELECT * FROM ',
       selectedConnectionId: null,
+      selectedWorkspaceId: null,
 
       setCurrentQuery: (query) => set({ currentQuery: query }),
 
-      setSelectedConnectionId: (id) => set({ selectedConnectionId: id }),
+      setSelectedConnectionId: (id, workspaceId = null) => set({ 
+        selectedConnectionId: id,
+        selectedWorkspaceId: workspaceId,
+      }),
 
       addToHistory: (item) =>
         set((state) => {
@@ -37,12 +43,18 @@ export const useQueryStore = create<QueryState>()(
         }),
 
       clearHistory: () => set({ history: [] }),
+
+      resetForWorkspaceChange: () => set({
+        selectedConnectionId: null,
+        selectedWorkspaceId: null,
+        // Keep history and currentQuery - they might still be useful
+      }),
     }),
     {
       name: 'scurrydb-query-history',
       partialize: (state) => ({
         history: state.history,
-        selectedConnectionId: state.selectedConnectionId,
+        // Don't persist selectedConnectionId - it should be reset on workspace change
       }),
     }
   )

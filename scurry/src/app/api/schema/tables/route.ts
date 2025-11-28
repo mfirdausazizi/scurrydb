@@ -4,6 +4,7 @@ import { fetchTables } from '@/lib/db/schema-fetcher';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getEffectivePermissions } from '@/lib/db/permissions';
 import { filterAllowedTables } from '@/lib/permissions/validator';
+import { validateConnectionAccess } from '@/lib/db/teams';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,27 @@ export async function GET(request: NextRequest) {
     }
 
     const user = await getCurrentUser();
-    const connection = await getConnectionById(connectionId, user?.id);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Validate connection access based on workspace context
+    const accessValidation = await validateConnectionAccess(user.id, connectionId, teamId || null);
+    if (!accessValidation.isValid) {
+      return NextResponse.json(
+        { error: accessValidation.error || 'Access denied' },
+        { status: 403 }
+      );
+    }
+
+    // Get connection - for team connections, we need to fetch without user filter
+    const connection = teamId 
+      ? await getConnectionById(connectionId) 
+      : await getConnectionById(connectionId, user.id);
+      
     if (!connection) {
       return NextResponse.json(
         { error: 'Connection not found' },
@@ -29,7 +50,7 @@ export async function GET(request: NextRequest) {
     const tables = await fetchTables(connection);
     
     // Filter tables based on permissions if this is a team connection
-    if (user && teamId) {
+    if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
       const tableNames = tables.map(t => t.name);
       const allowedTableNames = filterAllowedTables(tableNames, permission);

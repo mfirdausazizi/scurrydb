@@ -574,3 +574,54 @@ export async function getUserAccessibleConnections(userId: string, teamIds: stri
     updatedAt: new Date(row.updated_at as string),
   }));
 }
+
+/**
+ * Validates that a user has access to a specific connection within a workspace context.
+ * 
+ * @param userId - The user's ID
+ * @param connectionId - The connection ID to validate
+ * @param teamId - The team/workspace ID (null for personal workspace)
+ * @returns Object with isValid flag and optional error message
+ */
+export async function validateConnectionAccess(
+  userId: string,
+  connectionId: string,
+  teamId: string | null
+): Promise<{ isValid: boolean; error?: string }> {
+  const client = getDbClient();
+  
+  if (teamId) {
+    // Team workspace: check if user is a member and connection is shared with the team
+    const memberRow = await client.queryOne<DbRow>(
+      'SELECT role FROM team_members WHERE team_id = ? AND user_id = ?',
+      [teamId, userId]
+    );
+    
+    if (!memberRow) {
+      return { isValid: false, error: 'You are not a member of this team' };
+    }
+    
+    const sharedRow = await client.queryOne<DbRow>(
+      'SELECT id FROM shared_connections WHERE team_id = ? AND connection_id = ?',
+      [teamId, connectionId]
+    );
+    
+    if (!sharedRow) {
+      return { isValid: false, error: 'This connection is not shared with this team' };
+    }
+    
+    return { isValid: true };
+  } else {
+    // Personal workspace: check if user owns the connection
+    const connRow = await client.queryOne<DbRow>(
+      'SELECT id FROM connections WHERE id = ? AND user_id = ?',
+      [connectionId, userId]
+    );
+    
+    if (!connRow) {
+      return { isValid: false, error: 'Connection not found or you do not have access' };
+    }
+    
+    return { isValid: true };
+  }
+}

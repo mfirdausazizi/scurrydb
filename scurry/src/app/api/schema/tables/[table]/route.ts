@@ -4,6 +4,7 @@ import { fetchColumns, fetchIndexes } from '@/lib/db/schema-fetcher';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getEffectivePermissions } from '@/lib/db/permissions';
 import { filterAllowedColumns, filterAllowedTables } from '@/lib/permissions/validator';
+import { validateConnectionAccess } from '@/lib/db/teams';
 
 type RouteParams = { params: Promise<{ table: string }> };
 
@@ -21,7 +22,27 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const user = await getCurrentUser();
-    const connection = await getConnectionById(connectionId, user?.id);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Validate connection access based on workspace context
+    const accessValidation = await validateConnectionAccess(user.id, connectionId, teamId || null);
+    if (!accessValidation.isValid) {
+      return NextResponse.json(
+        { error: accessValidation.error || 'Access denied' },
+        { status: 403 }
+      );
+    }
+
+    // Get connection - for team connections, we need to fetch without user filter
+    const connection = teamId 
+      ? await getConnectionById(connectionId) 
+      : await getConnectionById(connectionId, user.id);
+      
     if (!connection) {
       return NextResponse.json(
         { error: 'Connection not found' },
@@ -30,7 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check table access if this is a team connection
-    if (user && teamId) {
+    if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
       const allowedTables = filterAllowedTables([table], permission);
       
@@ -49,7 +70,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Filter columns based on permissions if this is a team connection
     let filteredColumns = columns;
-    if (user && teamId) {
+    if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
       const columnNames = columns.map(c => c.name);
       const allowedColumnNames = filterAllowedColumns(table, columnNames, permission);

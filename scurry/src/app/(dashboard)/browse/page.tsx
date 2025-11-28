@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Database, Loader2, AlertTriangle, Table2 } from 'lucide-react';
+import { Database, Loader2, AlertTriangle, Table2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,13 +21,14 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { SchemaTree, TableStructure } from '@/components/schema';
-import { useConnections } from '@/hooks';
+import { useConnections, useWorkspaceContext } from '@/hooks';
 import { usePendingChangesStore } from '@/lib/store/pending-changes-store';
 import type { TableInfo, ColumnDefinition, IndexInfo, QueryResult } from '@/types';
 
 function BrowsePageContent() {
   const searchParams = useSearchParams();
-  const { connections, loading: connectionsLoading } = useConnections();
+  const { teamId, isTeamWorkspace } = useWorkspaceContext();
+  const { connections, loading: connectionsLoading } = useConnections({ teamId });
   
   const [selectedConnectionId, setSelectedConnectionId] = React.useState<string | null>(
     searchParams.get('connection')
@@ -109,7 +110,10 @@ function BrowsePageContent() {
     
     setTablesLoading(true);
     try {
-      const response = await fetch(`/api/schema/tables?connectionId=${selectedConnectionId}`);
+      const params = new URLSearchParams({ connectionId: selectedConnectionId });
+      if (teamId) params.set('teamId', teamId);
+      
+      const response = await fetch(`/api/schema/tables?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch tables');
       const data = await response.json();
       setTables(data);
@@ -119,7 +123,7 @@ function BrowsePageContent() {
     } finally {
       setTablesLoading(false);
     }
-  }, [selectedConnectionId]);
+  }, [selectedConnectionId, teamId]);
 
   const fetchTableStructure = React.useCallback(async (tableName: string) => {
     if (!selectedConnectionId) return;
@@ -127,8 +131,11 @@ function BrowsePageContent() {
     setStructureLoading(true);
     setPreview(null);
     try {
+      const params = new URLSearchParams({ connectionId: selectedConnectionId });
+      if (teamId) params.set('teamId', teamId);
+      
       const response = await fetch(
-        `/api/schema/tables/${encodeURIComponent(tableName)}?connectionId=${selectedConnectionId}`
+        `/api/schema/tables/${encodeURIComponent(tableName)}?${params.toString()}`
       );
       if (!response.ok) throw new Error('Failed to fetch table structure');
       const data = await response.json();
@@ -140,15 +147,18 @@ function BrowsePageContent() {
     } finally {
       setStructureLoading(false);
     }
-  }, [selectedConnectionId]);
+  }, [selectedConnectionId, teamId]);
 
   const fetchPreview = React.useCallback(async () => {
     if (!selectedConnectionId || !selectedTable) return;
     
     setPreviewLoading(true);
     try {
+      const params = new URLSearchParams({ connectionId: selectedConnectionId, limit: '100' });
+      if (teamId) params.set('teamId', teamId);
+      
       const response = await fetch(
-        `/api/schema/tables/${encodeURIComponent(selectedTable)}/preview?connectionId=${selectedConnectionId}&limit=100`
+        `/api/schema/tables/${encodeURIComponent(selectedTable)}/preview?${params.toString()}`
       );
       if (!response.ok) throw new Error('Failed to fetch preview');
       const data = await response.json();
@@ -159,7 +169,31 @@ function BrowsePageContent() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [selectedConnectionId, selectedTable]);
+  }, [selectedConnectionId, selectedTable, teamId]);
+
+  // Reset connection selection when workspace changes
+  React.useEffect(() => {
+    // Clear selected connection if it's not in the current workspace's connection list
+    if (selectedConnectionId && connections.length > 0) {
+      const connectionExists = connections.some(c => c.id === selectedConnectionId);
+      if (!connectionExists) {
+        setSelectedConnectionId(null);
+        setSelectedTable(null);
+        setTables([]);
+        setColumns([]);
+        setIndexes([]);
+        setPreview(null);
+      }
+    } else if (selectedConnectionId && !connectionsLoading && connections.length === 0) {
+      // No connections in this workspace, reset
+      setSelectedConnectionId(null);
+      setSelectedTable(null);
+      setTables([]);
+      setColumns([]);
+      setIndexes([]);
+      setPreview(null);
+    }
+  }, [connections, selectedConnectionId, connectionsLoading]);
 
   React.useEffect(() => {
     if (selectedConnectionId) {
@@ -208,11 +242,19 @@ function BrowsePageContent() {
         <Card className="border-dashed">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Database className="h-6 w-6 text-primary" />
+              {isTeamWorkspace ? (
+                <Users className="h-6 w-6 text-primary" />
+              ) : (
+                <Database className="h-6 w-6 text-primary" />
+              )}
             </div>
-            <CardTitle>No connections available</CardTitle>
+            <CardTitle>
+              {isTeamWorkspace ? 'No shared connections' : 'No connections available'}
+            </CardTitle>
             <CardDescription>
-              Add a database connection to start browsing your schema.
+              {isTeamWorkspace 
+                ? 'Team admins can share connections in team settings.'
+                : 'Add a database connection to start browsing your schema.'}
             </CardDescription>
           </CardHeader>
         </Card>

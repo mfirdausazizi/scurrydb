@@ -6,3 +6,8 @@ export {
   useTableScroll,
   usePrefersReducedMotion,
 } from './use-mobile-table';
+export {
+  useWorkspaceSync,
+  useConnectionValidator,
+  useWorkspaceContext,
+} from './use-workspace-sync';

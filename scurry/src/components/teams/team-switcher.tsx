@@ -22,8 +22,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useWorkspaceStore } from '@/lib/store/workspace-store';
+import { useConnectionStore } from '@/lib/store/connection-store';
+import { useQueryStore } from '@/lib/store/query-store';
 
 interface Team {
   id: string;
@@ -39,7 +41,10 @@ interface TeamSwitcherProps {
 
 export function TeamSwitcher({ className }: TeamSwitcherProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { activeTeam, setActiveTeam } = useWorkspaceStore();
+  const resetConnectionState = useConnectionStore((state) => state.resetForWorkspaceChange);
+  const resetQueryState = useQueryStore((state) => state.resetForWorkspaceChange);
   const [teams, setTeams] = React.useState<Team[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
@@ -109,7 +114,23 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
   };
 
   const handleSelectTeam = (team: Team | null) => {
-    setActiveTeam(team ? { id: team.id, name: team.name, slug: team.slug, role: team.role } : null);
+    const currentTeamId = activeTeam?.id ?? null;
+    const newTeamId = team?.id ?? null;
+    
+    // Only perform reset if actually switching workspaces
+    if (currentTeamId !== newTeamId) {
+      // Reset connection and query state before switching
+      resetConnectionState();
+      resetQueryState();
+      
+      // Set the new active team
+      setActiveTeam(team ? { id: team.id, name: team.name, slug: team.slug, role: team.role } : null);
+      
+      // If we're on a page with connection params, navigate to clean URL
+      if (pathname === '/browse' || pathname === '/query') {
+        router.push(pathname);
+      }
+    }
   };
 
   if (isLoading) {

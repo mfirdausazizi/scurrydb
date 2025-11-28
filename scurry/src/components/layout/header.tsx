@@ -16,6 +16,7 @@ import {
 import { ThemeToggle } from './theme-toggle';
 import { TeamSwitcher } from '@/components/teams';
 import { ConnectionSwitcher } from '@/components/connections';
+import { useWorkspaceSync } from '@/hooks';
 
 interface HeaderProps {
   breadcrumbs?: Array<{
@@ -52,6 +53,9 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
   const pathname = usePathname();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  
+  // Sync workspace state across stores when workspace changes
+  useWorkspaceSync();
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
