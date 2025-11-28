@@ -5,9 +5,9 @@ let pool: Pool | null = null;
 
 export function getPostgresPool(): Pool {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
+    const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
     if (!connectionString) {
-      throw new Error('DATABASE_URL is not set');
+      throw new Error('DATABASE_URL or POSTGRES_URL is not set');
     }
 
     pool = new Pool({
@@ -30,7 +30,7 @@ export function getPostgresPool(): Pool {
 }
 
 export function isPostgresEnabled(): boolean {
-  const dbUrl = process.env.DATABASE_URL;
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   return Boolean(dbUrl && (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://')));
 }
 
