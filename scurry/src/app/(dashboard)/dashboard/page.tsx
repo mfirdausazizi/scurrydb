@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Database, Plus, FileCode, Search } from 'lucide-react';
+import { Database, Plus, FileCode, Search, Activity } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useConnectionStore } from '@/lib/store';
+import { ActivityFeed } from '@/components/activities';
 
 export default function DashboardPage() {
   const { connections } = useConnectionStore();
@@ -90,42 +91,57 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {connections.length > 0 && (
+      <div className="grid gap-6 md:grid-cols-2">
+        {connections.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Connections</CardTitle>
+              <CardDescription>Your configured database connections</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {connections.slice(0, 5).map((connection) => (
+                  <div
+                    key={connection.id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: connection.color || '#8B5A2B' }}
+                      />
+                      <div>
+                        <p className="font-medium">{connection.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {connection.type} - {connection.host}:{connection.port}
+                        </p>
+                      </div>
+                    </div>
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href={`/browse?connection=${connection.id}`}>
+                        Connect
+                      </Link>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Connections</CardTitle>
-            <CardDescription>Your configured database connections</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>Your recent actions and team updates</CardDescription>
+            </div>
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {connections.slice(0, 5).map((connection) => (
-                <div
-                  key={connection.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: connection.color || '#8B5A2B' }}
-                    />
-                    <div>
-                      <p className="font-medium">{connection.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {connection.type} - {connection.host}:{connection.port}
-                      </p>
-                    </div>
-                  </div>
-                  <Button asChild variant="ghost" size="sm">
-                    <Link href={`/browse?connection=${connection.id}`}>
-                      Connect
-                    </Link>
-                  </Button>
-                </div>
-              ))}
-            </div>
+            <ActivityFeed limit={10} className="max-h-[300px]" />
           </CardContent>
         </Card>
-      )}
+      </div>
     </div>
   );
 }

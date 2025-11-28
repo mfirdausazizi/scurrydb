@@ -1,0 +1,479 @@
+'use client';
+
+import * as React from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Users, Mail, Trash2, Shield, Crown, Eye, UserPlus, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+
+interface Team {
+  id: string;
+  name: string;
+  slug: string;
+  ownerId: string;
+  role: string;
+}
+
+interface Member {
+  id: string;
+  userId: string;
+  role: string;
+  joinedAt: string;
+  user?: {
+    id: string;
+    email: string;
+    name: string | null;
+  };
+}
+
+interface Invitation {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+const roleIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  owner: Crown,
+  admin: Shield,
+  member: Users,
+  viewer: Eye,
+};
+
+const roleLabels: Record<string, string> = {
+  owner: 'Owner',
+  admin: 'Admin',
+  member: 'Member',
+  viewer: 'Viewer',
+};
+
+export default function TeamSettingsPage() {
+  const params = useParams();
+  const router = useRouter();
+  const teamId = params.id as string;
+
+  const [team, setTeam] = React.useState<Team | null>(null);
+  const [members, setMembers] = React.useState<Member[]>([]);
+  const [invitations, setInvitations] = React.useState<Invitation[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [teamName, setTeamName] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [inviteEmail, setInviteEmail] = React.useState('');
+  const [inviteRole, setInviteRole] = React.useState<string>('member');
+  const [inviting, setInviting] = React.useState(false);
+
+  React.useEffect(() => {
+    fetchTeamData();
+  }, [teamId]);
+
+  const fetchTeamData = async () => {
+    try {
+      const [teamRes, membersRes, invitationsRes] = await Promise.all([
+        fetch(`/api/teams/${teamId}`),
+        fetch(`/api/teams/${teamId}/members`),
+        fetch(`/api/teams/${teamId}/invitations`),
+      ]);
+
+      if (!teamRes.ok) {
+        toast.error('Team not found');
+        router.push('/dashboard');
+        return;
+      }
+
+      const teamData = await teamRes.json();
+      setTeam(teamData);
+      setTeamName(teamData.name);
+
+      if (membersRes.ok) {
+        setMembers(await membersRes.json());
+      }
+
+      if (invitationsRes.ok) {
+        setInvitations(await invitationsRes.json());
+      }
+    } catch (error) {
+      toast.error('Failed to load team data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateTeam = async () => {
+    if (!teamName.trim()) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/teams/${teamId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: teamName }),
+      });
+
+      if (response.ok) {
+        const updated = await response.json();
+        setTeam((prev) => (prev ? { ...prev, name: updated.name } : null));
+        toast.success('Team updated');
+      } else {
+        toast.error('Failed to update team');
+      }
+    } catch (error) {
+      toast.error('Failed to update team');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      const response = await fetch(`/api/teams/${teamId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.type === 'member') {
+          setMembers((prev) => [...prev, result.data]);
+          toast.success('Member added');
+        } else {
+          setInvitations((prev) => [...prev, result.data]);
+          toast.success('Invitation sent');
+        }
+        setInviteEmail('');
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to invite member');
+      }
+    } catch (error) {
+      toast.error('Failed to invite member');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleUpdateMemberRole = async (userId: string, role: string) => {
+    try {
+      const response = await fetch(`/api/teams/${teamId}/members/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+
+      if (response.ok) {
+        setMembers((prev) =>
+          prev.map((m) => (m.userId === userId ? { ...m, role } : m))
+        );
+        toast.success('Role updated');
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update role');
+      }
+    } catch (error) {
+      toast.error('Failed to update role');
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    try {
+      const response = await fetch(`/api/teams/${teamId}/members/${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setMembers((prev) => prev.filter((m) => m.userId !== userId));
+        toast.success('Member removed');
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to remove member');
+      }
+    } catch (error) {
+      toast.error('Failed to remove member');
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId: string) => {
+    try {
+      const response = await fetch(`/api/teams/${teamId}/invitations?invitationId=${invitationId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setInvitations((prev) => prev.filter((i) => i.id !== invitationId));
+        toast.success('Invitation cancelled');
+      } else {
+        toast.error('Failed to cancel invitation');
+      }
+    } catch (error) {
+      toast.error('Failed to cancel invitation');
+    }
+  };
+
+  const handleDeleteTeam = async () => {
+    try {
+      const response = await fetch(`/api/teams/${teamId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Team deleted');
+        router.push('/dashboard');
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to delete team');
+      }
+    } catch (error) {
+      toast.error('Failed to delete team');
+    }
+  };
+
+  const canManage = team?.role === 'owner' || team?.role === 'admin';
+  const isOwner = team?.role === 'owner';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!team) {
+    return null;
+  }
+
+  return (
+    <div className="container max-w-4xl py-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/dashboard">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold">{team.name}</h1>
+          <p className="text-muted-foreground">Team Settings</p>
+        </div>
+      </div>
+
+      <div className="grid gap-6">
+        {/* Team Info */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Team Information</CardTitle>
+            <CardDescription>Update your team details</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="teamName">Team Name</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="teamName"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  disabled={!canManage}
+                />
+                {canManage && (
+                  <Button onClick={handleUpdateTeam} disabled={saving || teamName === team.name}>
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Team URL</Label>
+              <Input value={team.slug} disabled />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Members */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Team Members</CardTitle>
+            <CardDescription>{members.length} member{members.length !== 1 ? 's' : ''}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {canManage && (
+              <form onSubmit={handleInviteMember} className="flex gap-2">
+                <Input
+                  placeholder="Email address"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="flex-1"
+                />
+                <Select value={inviteRole} onValueChange={setInviteRole}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isOwner && <SelectItem value="admin">Admin</SelectItem>}
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="submit" disabled={inviting || !inviteEmail.trim()}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {inviting ? 'Inviting...' : 'Invite'}
+                </Button>
+              </form>
+            )}
+
+            <div className="divide-y">
+              {members.map((member) => {
+                const RoleIcon = roleIcons[member.role] || Users;
+                return (
+                  <div key={member.id} className="flex items-center justify-between py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                        <span className="text-sm font-medium">
+                          {member.user?.email?.[0]?.toUpperCase() || '?'}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{member.user?.name || member.user?.email}</p>
+                        <p className="text-sm text-muted-foreground">{member.user?.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {canManage && member.role !== 'owner' ? (
+                        <Select
+                          value={member.role}
+                          onValueChange={(role) => handleUpdateMemberRole(member.userId, role)}
+                        >
+                          <SelectTrigger className="w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {isOwner && <SelectItem value="admin">Admin</SelectItem>}
+                            <SelectItem value="member">Member</SelectItem>
+                            <SelectItem value="viewer">Viewer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge variant="secondary" className="gap-1">
+                          <RoleIcon className="h-3 w-3" />
+                          {roleLabels[member.role]}
+                        </Badge>
+                      )}
+                      {canManage && member.role !== 'owner' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveMember(member.userId)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pending Invitations */}
+        {canManage && invitations.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Invitations</CardTitle>
+              <CardDescription>{invitations.length} pending</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y">
+                {invitations.map((invitation) => (
+                  <div key={invitation.id} className="flex items-center justify-between py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                        <Mail className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{invitation.email}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Invited as {roleLabels[invitation.role]} • Expires{' '}
+                          {new Date(invitation.expiresAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCancelInvitation(invitation.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Danger Zone */}
+        {isOwner && (
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+              <CardDescription>
+                Irreversible and destructive actions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Team
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete team?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete the team &quot;{team.name}&quot; and all its data,
+                      including shared connections and saved queries. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Delete Team
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}

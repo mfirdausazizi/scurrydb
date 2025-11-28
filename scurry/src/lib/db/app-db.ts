@@ -108,6 +108,123 @@ function initializeSchema(database: Database.Database) {
     );
     
     CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id);
+    
+    -- Teams/Workspaces
+    CREATE TABLE IF NOT EXISTS teams (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      owner_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (owner_id) REFERENCES users(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug);
+    CREATE INDEX IF NOT EXISTS idx_teams_owner_id ON teams(owner_id);
+    
+    -- Team Members
+    CREATE TABLE IF NOT EXISTS team_members (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      invited_by TEXT,
+      joined_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(team_id, user_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);
+    CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id);
+    
+    -- Team Invitations
+    CREATE TABLE IF NOT EXISTS team_invitations (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      invited_by TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (invited_by) REFERENCES users(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_team_invitations_team_id ON team_invitations(team_id);
+    CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token);
+    CREATE INDEX IF NOT EXISTS idx_team_invitations_email ON team_invitations(email);
+    
+    -- Shared Connections (team-level)
+    CREATE TABLE IF NOT EXISTS shared_connections (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      shared_by TEXT NOT NULL,
+      permission TEXT NOT NULL DEFAULT 'read',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (shared_by) REFERENCES users(id),
+      UNIQUE(connection_id, team_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_shared_connections_team_id ON shared_connections(team_id);
+    CREATE INDEX IF NOT EXISTS idx_shared_connections_connection_id ON shared_connections(connection_id);
+    
+    -- Saved Queries
+    CREATE TABLE IF NOT EXISTS saved_queries (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      team_id TEXT,
+      connection_id TEXT,
+      name TEXT NOT NULL,
+      description TEXT,
+      sql TEXT NOT NULL,
+      is_public INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE SET NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_saved_queries_user_id ON saved_queries(user_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_queries_team_id ON saved_queries(team_id);
+    
+    -- Query Comments
+    CREATE TABLE IF NOT EXISTS query_comments (
+      id TEXT PRIMARY KEY,
+      query_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (query_id) REFERENCES saved_queries(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_query_comments_query_id ON query_comments(query_id);
+    
+    -- Activity Feed
+    CREATE TABLE IF NOT EXISTS activities (
+      id TEXT PRIMARY KEY,
+      team_id TEXT,
+      user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      metadata TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_activities_team_id ON activities(team_id);
+    CREATE INDEX IF NOT EXISTS idx_activities_user_id ON activities(user_id);
+    CREATE INDEX IF NOT EXISTS idx_activities_created_at ON activities(created_at);
   `);
 }
 

@@ -1,10 +1,10 @@
 # Product Requirements Document (PRD)
 # 🐿️ Scurry — Modern Web-Based SQL Database Manager
 
-**Version:** 1.4  
+**Version:** 1.7  
 **Date:** November 2025  
 **Author:** Firdaus  
-**Status:** Active Development (Phase 1 Complete)  
+**Status:** Active Development (Phase 3 Complete)  
 **Project Type:** Open Source Hobby Project  
 **License:** AGPL-3.0  
 **Development Approach:** AI-Assisted (Factory Droid)
@@ -982,21 +982,33 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 
 **Milestone:** ✅ Private Beta Launch (November 2025)
 
-#### Phase 2: AI & Team Features (In Progress)
-**Goal:** AI-powered queries and collaboration features
+#### Phase 2: AI Features ✅ COMPLETED
+**Goal:** AI-powered queries and intelligent database assistance
 
-- [ ] AI model settings page (OpenAI, Anthropic, Ollama support)
-- [ ] Natural language to SQL queries
-- [ ] AI-powered database analysis and insights
-- [ ] Query optimization suggestions
-- [ ] MCP server (internal) for AI chat interface
-- [ ] MCP server (external) for Claude Desktop and other AI agents
-- [ ] Team workspaces
-- [ ] Shared connections and queries
+- [x] AI model settings page (OpenAI, Anthropic, Ollama, custom endpoints)
+- [x] Natural language to SQL queries with streaming responses
+- [x] AI-powered database analysis with schema context
+- [x] Query optimization suggestions
+- [x] AI chat interface integrated into Query Editor
+- [x] MCP server (external) for Claude Desktop and other AI agents
+- [x] Encrypted API key storage (AES-256-GCM)
 
-**Milestone:** Public Beta Launch
+**Milestone:** ✅ AI Integration Complete (November 2025)
 
-#### Phase 3: Scale & Polish (Months 8-10)
+#### Phase 3: Collaboration Features ✅ COMPLETED
+**Goal:** Team collaboration and sharing
+
+- [x] Team workspaces (create, manage, switch between teams)
+- [x] Team member management (invite, roles: owner/admin/member/viewer)
+- [x] Team invitations with email-based tokens
+- [x] Shared connections infrastructure (share connections with teams)
+- [x] Saved queries with team sharing
+- [x] Query comments
+- [x] Activity feed
+
+**Milestone:** ✅ Collaboration Features Complete (November 2025)
+
+#### Phase 4: Scale & Polish
 **Goal:** Production readiness and growth
 
 - Performance monitoring dashboard
@@ -1008,7 +1020,7 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 
 **Milestone:** General Availability (GA)
 
-#### Phase 4: Enterprise (Months 11-12)
+#### Phase 5: Enterprise
 **Goal:** Enterprise sales readiness
 
 - On-premise deployment option
@@ -1168,6 +1180,10 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | Nov 2025 | — | Initial draft |
+| 1.4 | Nov 2025 | — | Phase 1 complete, AI features spec |
+| 1.5 | Nov 2025 | — | Phase 2 AI integration complete |
+| 1.6 | Nov 2025 | — | Phase 3 collaboration: team workspaces, members, invitations, shared connections |
+| 1.7 | Nov 2025 | — | Phase 3 complete: saved queries, comments, activity feed |
 
 ---
 

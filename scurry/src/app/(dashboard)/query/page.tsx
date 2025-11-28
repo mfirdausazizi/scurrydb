@@ -41,6 +41,15 @@ export default function QueryPage() {
     }
   }, [connections, selectedConnectionId, setSelectedConnectionId]);
 
+  // Load query from sessionStorage (when coming from saved queries page)
+  React.useEffect(() => {
+    const savedQuery = sessionStorage.getItem('runQuery');
+    if (savedQuery) {
+      setCurrentQuery(savedQuery);
+      sessionStorage.removeItem('runQuery');
+    }
+  }, [setCurrentQuery]);
+
   const handleExecute = async () => {
     if (!selectedConnectionId || !currentQuery.trim()) {
       toast.error('Please select a connection and enter a query');
@@ -148,6 +157,7 @@ export default function QueryPage() {
           <QueryToolbar
             connections={connections}
             selectedConnectionId={selectedConnectionId}
+            currentQuery={currentQuery}
             onConnectionChange={setSelectedConnectionId}
             onExecute={handleExecute}
             onFormat={handleFormat}

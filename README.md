@@ -7,7 +7,7 @@
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#screenshots">Screenshots</a> •
+  <a href="#mcp-server-claude-desktop-integration">MCP Server</a> •
   <a href="#development">Development</a> •
   <a href="#contributing">Contributing</a>
 </p>
@@ -82,11 +82,22 @@ Scurry is a fresh take on SQL database management — **modern UI, mobile-friend
 - No data sent to third parties
 - Session-based authentication
 
-### 🤖 AI-Powered (Coming Soon)
-- Natural language to SQL queries
-- AI-powered database analysis & insights
-- Query optimization suggestions
-- MCP server for Claude Desktop and external AI agents
+### 🤖 AI-Powered
+- **Natural language to SQL** — Ask in plain English, get SQL queries
+- **Multiple AI providers** — OpenAI (GPT-4.1, o3), Anthropic (Claude Sonnet 4), Ollama, custom endpoints
+- **Streaming responses** — Real-time AI chat integrated into Query Editor
+- **Schema-aware** — AI understands your database structure for accurate queries
+- **One-click insert** — Insert generated SQL directly into the editor
+- **MCP Server** — Claude Desktop integration for external AI agent access
+
+### 👥 Team Collaboration
+- **Team workspaces** — Create and manage teams with a workspace switcher
+- **Role-based access** — Owner, Admin, Member, Viewer roles with granular permissions
+- **Shared connections** — Share database connections with your team
+- **Saved queries** — Save and share queries with your team
+- **Query comments** — Collaborate with threaded comments on saved queries
+- **Activity feed** — Track team actions (queries saved, connections shared, members joined)
+- **Member invitations** — Invite team members via email with expiring tokens
 
 ---
 
@@ -207,6 +218,50 @@ PORT=3000
 
 ---
 
+## MCP Server (Claude Desktop Integration)
+
+Scurry includes an MCP (Model Context Protocol) server that allows external AI agents like Claude Desktop to interact with your databases.
+
+### Setup for Claude Desktop
+
+Add this to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "scurry": {
+      "command": "node",
+      "args": ["/path/to/scurry/dist/mcp-server.cjs"],
+      "env": {
+        "ENCRYPTION_KEY": "your-32-char-secret-key-here!!",
+        "SCURRY_DATA_DIR": "/path/to/scurry/data"
+      }
+    }
+  }
+}
+```
+
+### Build the MCP Server
+
+```bash
+cd scurry
+npm run mcp:build
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_connections` | List all saved database connections |
+| `get_schema` | Get table and column information for a connection |
+| `execute_query` | Run SQL queries on a database |
+
+### Available Resources
+
+Each database connection is exposed as an MCP resource with its schema information.
+
+---
+
 ## Development
 
 ### Prerequisites
@@ -278,7 +333,8 @@ scurry/
 | Validation | [Zod](https://zod.dev/) |
 | Auth | [Argon2id](https://github.com/napi-rs/node-rs) (password hashing) |
 | Database Drivers | mysql2, pg, better-sqlite3 |
-| AI (Coming) | OpenAI, Anthropic, Ollama, MCP SDK |
+| AI | [Vercel AI SDK](https://sdk.vercel.ai/), @ai-sdk/openai, @ai-sdk/anthropic |
+| MCP | [@modelcontextprotocol/sdk](https://modelcontextprotocol.io/) |
 
 ---
 
@@ -295,19 +351,21 @@ scurry/
 - [x] Landing page with public/authenticated routes
 - [x] Per-user connection isolation
 
-### v0.2.0 — AI Integration (Next)
-- [ ] AI model settings page (OpenAI, Anthropic, Ollama)
-- [ ] Natural language to SQL queries
-- [ ] AI-powered database analysis & insights
-- [ ] Query optimization suggestions
-- [ ] MCP server (internal) for AI chat interface
-- [ ] MCP server (external) for Claude Desktop integration
+### v0.2.0 — AI Integration ✅ Complete
+- [x] AI model settings page (OpenAI, Anthropic, Ollama, custom)
+- [x] Natural language to SQL queries with streaming
+- [x] AI chat interface integrated into Query Editor
+- [x] Schema-aware AI with database context injection
+- [x] MCP server for Claude Desktop and external AI agents
+- [x] Encrypted API key storage (AES-256-GCM)
 
-### v0.3.0 — Collaboration
-- [ ] Team workspaces
-- [ ] Shared connections and queries
-- [ ] Query sharing with comments
-- [ ] Activity feed
+### v0.3.0 — Collaboration ✅ Complete
+- [x] Team workspaces (create, manage, switch)
+- [x] Team member management (invite, roles)
+- [x] Shared connections with teams
+- [x] Saved queries with team sharing
+- [x] Query comments
+- [x] Activity feed on dashboard
 
 ### v1.0.0 — Production Ready
 - [ ] Multi-tab query editor

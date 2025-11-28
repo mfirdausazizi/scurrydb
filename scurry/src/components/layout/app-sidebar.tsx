@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Database, Plus, Settings, LayoutDashboard, Search, FileCode, Loader2, Bot } from 'lucide-react';
+import { Database, Plus, Settings, LayoutDashboard, Search, FileCode, Loader2, Bot, Bookmark } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useConnections } from '@/hooks';
+import { TeamSwitcher } from '@/components/teams';
 
 const navItems = [
   {
@@ -30,6 +31,11 @@ const navItems = [
     title: 'Query Editor',
     url: '/query',
     icon: FileCode,
+  },
+  {
+    title: 'Saved Queries',
+    url: '/queries',
+    icon: Bookmark,
   },
   {
     title: 'Browse',
@@ -50,6 +56,9 @@ export function AppSidebar() {
             <Database className="h-4 w-4" />
           </div>
           <span className="font-semibold text-lg">Scurry</span>
+        </div>
+        <div className="px-2 pb-2">
+          <TeamSwitcher />
         </div>
       </SidebarHeader>
 

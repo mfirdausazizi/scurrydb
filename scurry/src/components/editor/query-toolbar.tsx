@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { Play, Loader2, Code, History, Download, Bot } from 'lucide-react';
+import { Play, Loader2, Code, History, Download, Bot, Save } from 'lucide-react';
+import { SaveQueryDialog } from '@/components/queries';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -23,6 +24,7 @@ type SafeConnection = Omit<DatabaseConnection, 'password'>;
 interface QueryToolbarProps {
   connections: SafeConnection[];
   selectedConnectionId: string | null;
+  currentQuery: string;
   onConnectionChange: (connectionId: string) => void;
   onExecute: () => void;
   onFormat: () => void;
@@ -37,6 +39,7 @@ interface QueryToolbarProps {
 export function QueryToolbar({
   connections,
   selectedConnectionId,
+  currentQuery,
   onConnectionChange,
   onExecute,
   onFormat,
@@ -103,6 +106,18 @@ export function QueryToolbar({
           </TooltipTrigger>
           <TooltipContent>Format SQL</TooltipContent>
         </Tooltip>
+
+        {currentQuery.trim() && (
+          <SaveQueryDialog
+            sql={currentQuery}
+            connectionId={selectedConnectionId}
+            trigger={
+              <Button variant="ghost" size="icon">
+                <Save className="h-4 w-4" />
+              </Button>
+            }
+          />
+        )}
 
         {hasResults && onExport && (
           <Tooltip>
