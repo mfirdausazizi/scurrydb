@@ -318,3 +318,38 @@
 .dark .glass-header {
   background: rgba(28, 28, 30, 0.8);
 }
+
+/* Mobile-responsive table styles */
+@media (max-width: 767px) {
+  [data-slot="table-cell"],
+  [data-slot="table-head"] {
+    padding: 0.375rem;
+    font-size: 0.75rem;
+  }
+  
+  [data-slot="table-cell"] {
+    white-space: nowrap;
+  }
+}
+
+
+
+/* Touch-friendly minimum sizes */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .scroll-indicator,
+  .animate-fade-in-up,
+  .animate-fade-in,
+  .animate-slide-in-right,
+  .animate-float,
+  .animate-pulse-glow,
+  .animate-gradient {
+    animation: none;
+    transition: none;
+  }
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronsUpDown, Plus, Users, User, Settings, Check } from 'lucide-react';
+import { ChevronsUpDown, Plus, Users, User, Settings, Check, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useWorkspaceStore } from '@/lib/store/workspace-store';
 
 interface Team {
   id: string;
@@ -38,8 +39,8 @@ interface TeamSwitcherProps {
 
 export function TeamSwitcher({ className }: TeamSwitcherProps) {
   const router = useRouter();
+  const { activeTeam, setActiveTeam } = useWorkspaceStore();
   const [teams, setTeams] = React.useState<Team[]>([]);
-  const [selectedTeam, setSelectedTeam] = React.useState<Team | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
   const [newTeamName, setNewTeamName] = React.useState('');
@@ -78,8 +79,9 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
 
       if (response.ok) {
         const team = await response.json();
-        setTeams((prev) => [...prev, { ...team, role: 'owner', memberCount: 1 }]);
-        setSelectedTeam({ ...team, role: 'owner', memberCount: 1 });
+        const newTeam = { ...team, role: 'owner', memberCount: 1 };
+        setTeams((prev) => [...prev, newTeam]);
+        setActiveTeam({ id: newTeam.id, name: newTeam.name, slug: newTeam.slug, role: 'owner' });
         setShowCreateDialog(false);
         setNewTeamName('');
         setNewTeamSlug('');
@@ -107,9 +109,7 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
   };
 
   const handleSelectTeam = (team: Team | null) => {
-    setSelectedTeam(team);
-    // In a real app, you might want to store this in localStorage or context
-    // and use it to filter connections/queries
+    setActiveTeam(team ? { id: team.id, name: team.name, slug: team.slug, role: team.role } : null);
   };
 
   if (isLoading) {
@@ -128,10 +128,10 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" className={`w-full justify-between ${className}`}>
             <div className="flex items-center gap-2 truncate">
-              {selectedTeam ? (
+              {activeTeam ? (
                 <>
                   <Users className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{selectedTeam.name}</span>
+                  <span className="truncate">{activeTeam.name}</span>
                 </>
               ) : (
                 <>
@@ -150,7 +150,7 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
           <DropdownMenuItem onClick={() => handleSelectTeam(null)}>
             <User className="mr-2 h-4 w-4" />
             <span>Personal</span>
-            {!selectedTeam && <Check className="ml-auto h-4 w-4" />}
+            {!activeTeam && <Check className="ml-auto h-4 w-4" />}
           </DropdownMenuItem>
           
           {teams.length > 0 && (
@@ -161,7 +161,7 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
                 <DropdownMenuItem key={team.id} onClick={() => handleSelectTeam(team)}>
                   <Users className="mr-2 h-4 w-4" />
                   <span className="truncate">{team.name}</span>
-                  {selectedTeam?.id === team.id && <Check className="ml-auto h-4 w-4" />}
+                  {activeTeam?.id === team.id && <Check className="ml-auto h-4 w-4" />}
                 </DropdownMenuItem>
               ))}
             </>
@@ -169,11 +169,19 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
           
           <DropdownMenuSeparator />
           
-          {selectedTeam && (
-            <DropdownMenuItem onClick={() => router.push(`/teams/${selectedTeam.id}/settings`)}>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Team Settings</span>
-            </DropdownMenuItem>
+          {activeTeam && (
+            <>
+              <DropdownMenuItem onClick={() => router.push(`/teams/${activeTeam.id}/settings`)}>
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Team Settings</span>
+              </DropdownMenuItem>
+              {(activeTeam.role === 'owner' || activeTeam.role === 'admin') && (
+                <DropdownMenuItem onClick={() => router.push(`/teams/${activeTeam.id}/permissions`)}>
+                  <Shield className="mr-2 h-4 w-4" />
+                  <span>Permissions</span>
+                </DropdownMenuItem>
+              )}
+            </>
           )}
           
           <DropdownMenuItem onClick={() => setShowCreateDialog(true)}>

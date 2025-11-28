@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getConnectionById } from '@/lib/db/app-db';
 import { executeQuery } from '@/lib/db/query-executor';
+import { getCurrentUser } from '@/lib/auth/session';
+import { getUserTeams } from '@/lib/db/teams';
+import { getEffectivePermissions } from '@/lib/db/permissions';
+import { validateQuery } from '@/lib/permissions/validator';
 
 const executeQuerySchema = z.object({
   connectionId: z.string().uuid(),
   sql: z.string().min(1, 'SQL query is required'),
   limit: z.number().int().min(1).max(10000).optional(),
+  teamId: z.string().uuid().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -21,14 +26,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { connectionId, sql, limit } = validationResult.data;
+    const { connectionId, sql, limit, teamId } = validationResult.data;
 
-    const connection = await getConnectionById(connectionId);
+    const user = await getCurrentUser();
+    const connection = await getConnectionById(connectionId, user?.id);
     if (!connection) {
       return NextResponse.json(
         { error: 'Connection not found' },
         { status: 404 }
       );
+    }
+
+    // Check permissions if this is a team connection
+    if (user && teamId) {
+      const permission = await getEffectivePermissions(user.id, teamId, connectionId);
+      const validation = validateQuery(sql, permission);
+      
+      if (!validation.allowed) {
+        return NextResponse.json(
+          { 
+            columns: [],
+            rows: [],
+            rowCount: 0,
+            executionTime: 0,
+            error: validation.reason || 'Permission denied',
+            permissionError: true,
+            violationType: validation.violationType,
+          },
+          { status: 403 }
+        );
+      }
     }
 
     const result = await executeQuery(connection, sql, limit);

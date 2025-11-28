@@ -1,9 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Key, Hash, Loader2 } from 'lucide-react';
+import { Loader2, Key, Hash, Copy, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -12,7 +14,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { EditableResultsTable, PendingChangesPanel } from '@/components/results';
 import { usePendingChangesStore, getStoreKey, emptyChanges } from '@/lib/store/pending-changes-store';
 import type {
@@ -46,10 +60,12 @@ export function TableStructure({
   onLoadPreview,
   onRefreshPreview,
 }: TableStructureProps) {
-  const [activeTab, setActiveTab] = React.useState('columns');
+  const [activeTab, setActiveTab] = React.useState('data');
   const [isApplying, setIsApplying] = React.useState(false);
   const [changeHistory, setChangeHistory] = React.useState<DataChangeLog[]>([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [rowsPerPage, setRowsPerPage] = React.useState(25);
 
   // Get store key for current table
   const storeKey = connectionId ? getStoreKey(connectionId, tableName) : null;
@@ -71,11 +87,63 @@ export function TableStructure({
   // Get current pending changes (use stable empty reference if none)
   const pendingChanges: PendingChanges = tableChangesEntry?.changes ?? emptyChanges;
 
+  // Pagination calculations
+  const totalRows = preview?.rows.length ?? 0;
+  const totalPages = Math.ceil(totalRows / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = Math.min(startIndex + rowsPerPage, totalRows);
+  
+  // Create paginated result for display
+  const paginatedPreview = React.useMemo(() => {
+    if (!preview) return null;
+    return {
+      ...preview,
+      rows: preview.rows.slice(startIndex, endIndex),
+    };
+  }, [preview, startIndex, endIndex]);
+
+  // Reset to page 1 when table changes or rows per page changes
   React.useEffect(() => {
-    if (activeTab === 'data' && !preview && !previewLoading) {
+    setCurrentPage(1);
+  }, [tableName, rowsPerPage]);
+
+  // Load preview immediately when component mounts or when switching to data tab
+  React.useEffect(() => {
+    if (!preview && !previewLoading) {
       onLoadPreview();
     }
-  }, [activeTab, preview, previewLoading, onLoadPreview]);
+  }, [preview, previewLoading, onLoadPreview]);
+
+  // Copy handlers
+  const handleCopyColumns = React.useCallback(async () => {
+    const data = columns.map(c => ({
+      name: c.name,
+      type: c.type,
+      nullable: c.nullable,
+      defaultValue: c.defaultValue,
+      isPrimaryKey: c.isPrimaryKey,
+      isForeignKey: c.isForeignKey,
+    }));
+    await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    toast.success('Columns copied to clipboard');
+  }, [columns]);
+
+  const handleCopyIndexes = React.useCallback(async () => {
+    const data = indexes.map(i => ({
+      name: i.name,
+      columns: i.columns,
+      unique: i.unique,
+      primary: i.primary,
+    }));
+    await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    toast.success('Indexes copied to clipboard');
+  }, [indexes]);
+
+  const handleCopyPreview = React.useCallback(async () => {
+    if (!preview || preview.rows.length === 0) return;
+    await navigator.clipboard.writeText(JSON.stringify(preview.rows, null, 2));
+    toast.success(`${preview.rows.length} rows copied to clipboard`);
+  }, [preview]);
 
   const handleChangesUpdate = React.useCallback(
     (changes: PendingChanges) => {
@@ -187,25 +255,40 @@ export function TableStructure({
     pendingChanges.deletes.length > 0;
 
   return (
-    <div className="space-y-4 min-w-0 overflow-hidden">
-      <div className="flex items-center gap-2">
-        <h2 className="text-xl font-semibold truncate">{tableName}</h2>
-        <Badge variant="outline" className="flex-shrink-0">{columns.length} columns</Badge>
-      </div>
+    <>
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+        <div className="flex items-center gap-2 mb-4 flex-shrink-0">
+          <h2 className="text-xl font-semibold truncate">{tableName}</h2>
+          <Badge variant="outline" className="flex-shrink-0">{columns.length} columns</Badge>
+        </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="columns">Columns</TabsTrigger>
-          <TabsTrigger value="indexes">Indexes</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <TabsList className="flex-shrink-0">
           <TabsTrigger value="data" className="relative">
             Data Preview
             {hasChanges && (
               <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500" />
             )}
           </TabsTrigger>
+          <TabsTrigger value="columns">Columns</TabsTrigger>
+          <TabsTrigger value="indexes">Indexes</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="columns" className="mt-4">
+        <TabsContent value="columns" className="mt-4 flex-1 overflow-auto min-h-0">
+          <TooltipProvider>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-muted-foreground">{columns.length} columns</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleCopyColumns} className="h-8 gap-1.5">
+                    <Copy className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Copy</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Copy as JSON</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
           <div className="rounded-md border overflow-auto">
             <Table>
               <TableHeader>
@@ -257,7 +340,21 @@ export function TableStructure({
           </div>
         </TabsContent>
 
-        <TabsContent value="indexes" className="mt-4">
+        <TabsContent value="indexes" className="mt-4 flex-1 overflow-auto min-h-0">
+          <TooltipProvider>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-muted-foreground">{indexes.length} indexes</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleCopyIndexes} className="h-8 gap-1.5">
+                    <Copy className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Copy</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Copy as JSON</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
           {indexes.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No indexes found
@@ -302,7 +399,7 @@ export function TableStructure({
           )}
         </TabsContent>
 
-        <TabsContent value="data" className="mt-4 space-y-3">
+        <TabsContent value="data" className="mt-4 flex-1 flex flex-col overflow-hidden min-h-0">
           {previewLoading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -314,30 +411,40 @@ export function TableStructure({
               </div>
             ) : (
               <>
-                <PendingChangesPanel
-                  currentTableName={tableName}
-                  currentConnectionId={connectionId}
-                  onApply={handleApplyChanges}
-                  onDiscard={handleDiscardChanges}
-                  isApplying={isApplying}
-                  changeHistory={changeHistory}
-                  historyLoading={historyLoading}
-                  onLoadHistory={handleLoadHistory}
-                />
-                {primaryKeyColumns.length > 0 ? (
-                  <EditableResultsTable
-                    result={preview}
+                {/* Controls at top - fixed, doesn't scroll */}
+                <div className="flex-shrink-0 mb-3">
+                  <PendingChangesPanel
+                    currentTableName={tableName}
+                    currentConnectionId={connectionId}
+                    onApply={handleApplyChanges}
+                    onDiscard={handleDiscardChanges}
+                    isApplying={isApplying}
+                    changeHistory={changeHistory}
+                    historyLoading={historyLoading}
+                    onLoadHistory={handleLoadHistory}
                     primaryKeyColumns={primaryKeyColumns}
-                    columnDefinitions={columns}
-                    onChangesUpdate={handleChangesUpdate}
-                    pendingChanges={pendingChanges}
+                    previewData={preview.rows as Record<string, unknown>[]}
                   />
-                ) : (
-                  <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-800 text-sm">
-                    <strong>Read-only mode:</strong> This table has no primary key defined, so inline editing is disabled.
-                    You can still filter and view the data.
-                  </div>
-                )}
+                </div>
+
+                {/* Table content - let EditableResultsTable manage its own scrolling */}
+                <div className="flex-1 flex flex-col min-h-0">
+                  {primaryKeyColumns.length > 0 ? (
+                    <EditableResultsTable
+                      result={paginatedPreview!}
+                      primaryKeyColumns={primaryKeyColumns}
+                      columnDefinitions={columns}
+                      onChangesUpdate={handleChangesUpdate}
+                      pendingChanges={pendingChanges}
+                      pageOffset={startIndex}
+                    />
+                  ) : (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-800 text-sm">
+                      <strong>Read-only mode:</strong> This table has no primary key defined, so inline editing is disabled.
+                      You can still filter and view the data.
+                    </div>
+                  )}
+                </div>
               </>
             )
           ) : (
@@ -346,7 +453,105 @@ export function TableStructure({
             </div>
           )}
         </TabsContent>
-      </Tabs>
-    </div>
+        </Tabs>
+      </div>
+
+      {/* Pagination Footer - Fixed at bottom, outside scroll area */}
+      {activeTab === 'data' && preview && !preview.error && totalRows > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t mt-3 flex-shrink-0">
+          {/* Row count on left */}
+          <span className="text-sm text-muted-foreground order-2 sm:order-1">
+            Showing {startIndex + 1}-{endIndex} of {totalRows} rows
+          </span>
+
+          {/* Pagination controls in center */}
+          <div className="flex items-center gap-1 order-1 sm:order-2">
+            {/* First page button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="h-8 w-8 p-0"
+              title="First page"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="h-8 w-8 p-0"
+              title="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm min-w-[100px] text-center">
+              Page {currentPage} of {totalPages || 1}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="h-8 w-8 p-0"
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            {/* Last page button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage >= totalPages}
+              className="h-8 w-8 p-0"
+              title="Last page"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Rows per page and copy on right */}
+          <div className="flex items-center gap-3 order-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Rows per page:</span>
+              <Select
+                value={String(rowsPerPage)}
+                onValueChange={(value) => setRowsPerPage(Number(value))}
+              >
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleCopyPreview} 
+                    className="h-8 gap-1.5"
+                    disabled={!preview || preview.rows.length === 0}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Copy</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Copy all rows as JSON</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

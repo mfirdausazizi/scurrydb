@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { Database, Plus, FileCode, Search, Activity, Loader2 } from 'lucide-react';
+import { Database, Plus, FileCode, Search, Activity, Loader2, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useConnections } from '@/hooks';
 import { ActivityFeed } from '@/components/activities';
+import { useWorkspaceStore } from '@/lib/store/workspace-store';
 
 export default function DashboardPage() {
-  const { connections, loading } = useConnections();
+  const { activeTeamId, activeTeam } = useWorkspaceStore();
+  const { connections, loading } = useConnections({ teamId: activeTeamId });
+  const isTeamWorkspace = !!activeTeamId;
 
   return (
     <div className="space-y-6">
@@ -22,7 +25,10 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Connections</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center gap-1">
+              {isTeamWorkspace && <Users className="h-3 w-3" />}
+              {isTeamWorkspace ? 'Team Connections' : 'Connections'}
+            </CardTitle>
             <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -30,7 +36,7 @@ export default function DashboardPage() {
               {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : connections.length}
             </div>
             <p className="text-xs text-muted-foreground">
-              Database connections configured
+              {isTeamWorkspace ? 'Shared connections in this team' : 'Database connections configured'}
             </p>
           </CardContent>
         </Card>
@@ -40,12 +46,21 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Button asChild className="w-full justify-start" variant="outline">
-              <Link href="/connections">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Connection
-              </Link>
-            </Button>
+            {isTeamWorkspace ? (
+              <Button asChild className="w-full justify-start" variant="outline">
+                <Link href={`/teams/${activeTeamId}/settings`}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Team Settings
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild className="w-full justify-start" variant="outline">
+                <Link href="/connections">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Connection
+                </Link>
+              </Button>
+            )}
             <Button asChild className="w-full justify-start" variant="outline">
               <Link href="/query">
                 <FileCode className="mr-2 h-4 w-4" />
@@ -75,20 +90,33 @@ export default function DashboardPage() {
         <Card className="border-dashed">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Database className="h-6 w-6 text-primary" />
+              {isTeamWorkspace ? <Users className="h-6 w-6 text-primary" /> : <Database className="h-6 w-6 text-primary" />}
             </div>
-            <CardTitle>No connections yet</CardTitle>
+            <CardTitle>
+              {isTeamWorkspace ? 'No shared connections' : 'No connections yet'}
+            </CardTitle>
             <CardDescription>
-              Get started by adding your first database connection.
+              {isTeamWorkspace 
+                ? 'Team admins can share connections in team settings.'
+                : 'Get started by adding your first database connection.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Button asChild>
-              <Link href="/connections">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Your First Connection
-              </Link>
-            </Button>
+            {isTeamWorkspace ? (
+              <Button asChild>
+                <Link href={`/teams/${activeTeamId}/settings`}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Go to Team Settings
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link href="/connections">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Your First Connection
+                </Link>
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -97,8 +125,13 @@ export default function DashboardPage() {
         {connections.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Recent Connections</CardTitle>
-              <CardDescription>Your configured database connections</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                {isTeamWorkspace && <Users className="h-4 w-4" />}
+                {isTeamWorkspace ? 'Team Connections' : 'Recent Connections'}
+              </CardTitle>
+              <CardDescription>
+                {isTeamWorkspace ? 'Shared connections in this team' : 'Your configured database connections'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -120,7 +153,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <Button asChild variant="ghost" size="sm">
-                      <Link href={`/browse?connection=${connection.id}`}>
+                      <Link href={`/browse?connection=${connection.id}${isTeamWorkspace ? `&teamId=${activeTeamId}` : ''}`}>
                         Connect
                       </Link>
                     </Button>

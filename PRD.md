@@ -789,9 +789,11 @@ This project is built using **Factory Droid** — an AI-powered software develop
 ├─────────────────────────────────────────────────────────┤
 │  Layer 3: Authorization                                 │
 │  • RBAC (Role-Based Access Control)                     │
-│  • Connection-level permissions                         │
-│  • Query-type restrictions                              │
-│  • Row-level security (future)                          │
+│  • Granular permission profiles                         │
+│  • Connection-level permissions (view/edit)             │
+│  • Table-level access restrictions                      │
+│  • Column-level visibility controls                     │
+│  • Query validation before execution                    │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 4: Data Protection                               │
 │  • AES-256 encryption at rest                           │
@@ -802,10 +804,42 @@ This project is built using **Factory Droid** — an AI-powered software develop
 │  Layer 5: Audit & Compliance                            │
 │  • Immutable audit logs                                 │
 │  • Query logging with masking                           │
+│  • Permission change tracking                           │
 │  • Compliance reports                                   │
 │  • Anomaly detection                                    │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### 6.4 Granular Permission System
+
+**Architecture:**
+
+```
+Permission Profiles (Templates)
+       ↓
+Connection Permissions (per profile)
+       ↓
+Table Restrictions (allowed tables)
+       ↓
+Column Restrictions (hidden columns)
+       ↓
+Member Assignments (profile or custom)
+       ↓
+Effective Permissions (calculated)
+       ↓
+Query Validation (before execution)
+```
+
+**Permission Inheritance:**
+1. Custom per-user permissions (highest priority)
+2. Assigned permission profile
+3. Default: No access to shared connections
+
+**Enforcement Points:**
+- Query execution endpoint validates SQL before running
+- Schema browser filters tables and columns
+- AI query generation respects restrictions
+- Export operations honor permissions
 
 ### 6.4 API Design
 
@@ -1008,8 +1042,23 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 - [x] Saved queries with team sharing
 - [x] Query comments
 - [x] Activity feed
+- [x] Granular permission system (per-user connection, table, and column access control)
 
 **Milestone:** ✅ Collaboration Features Complete (November 2025)
+
+#### Phase 3.5: Granular Permissions ✅ COMPLETED
+**Goal:** Fine-grained access control for team members
+
+- [x] Permission profiles (reusable permission templates)
+- [x] Per-connection permissions (view/edit access)
+- [x] Table-level restrictions (allow specific tables only)
+- [x] Column-level restrictions (hide sensitive columns)
+- [x] Custom per-user permission overrides
+- [x] SQL query validation against permissions
+- [x] Schema browser filtering based on permissions
+- [x] Permission management UI
+
+**Milestone:** ✅ Granular Permissions Complete (November 2025)
 
 #### Phase 4: Scale & Polish
 **Goal:** Production readiness and growth

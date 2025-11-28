@@ -198,3 +198,59 @@ CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(t
 CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at);
 
+-- Granular Permissions System
+
+-- Permission Profiles (role-based templates)
+CREATE TABLE IF NOT EXISTS permission_profiles (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_permission_profiles_team_id ON permission_profiles(team_id);
+
+-- Profile Connection Permissions (connections assigned to profiles)
+CREATE TABLE IF NOT EXISTS profile_connection_permissions (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES permission_profiles(id) ON DELETE CASCADE,
+  connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+  can_view BOOLEAN DEFAULT true,
+  can_edit BOOLEAN DEFAULT false,
+  allowed_tables JSONB,
+  created_at TIMESTAMPTZ NOT NULL,
+  UNIQUE(profile_id, connection_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_profile_id ON profile_connection_permissions(profile_id);
+CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_connection_id ON profile_connection_permissions(connection_id);
+
+-- Profile Column Restrictions (hidden columns per table)
+CREATE TABLE IF NOT EXISTS profile_column_restrictions (
+  id TEXT PRIMARY KEY,
+  profile_permission_id TEXT NOT NULL REFERENCES profile_connection_permissions(id) ON DELETE CASCADE,
+  table_name TEXT NOT NULL,
+  hidden_columns JSONB NOT NULL,
+  UNIQUE(profile_permission_id, table_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_column_restrictions_profile_permission_id ON profile_column_restrictions(profile_permission_id);
+
+-- Member Permission Assignments (links users to profiles + overrides)
+CREATE TABLE IF NOT EXISTS member_permission_assignments (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  profile_id TEXT REFERENCES permission_profiles(id) ON DELETE SET NULL,
+  custom_permissions JSONB,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  UNIQUE(team_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id);
+CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id);
+CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id);
+

@@ -33,7 +33,14 @@ export const SchemaTree = React.memo(function SchemaTree({
     new Set(['tables', 'views'])
   );
   const [searchQuery, setSearchQuery] = React.useState('');
-  const parentRef = React.useRef<HTMLDivElement>(null);
+  const [isMounted, setIsMounted] = React.useState(false);
+  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+
+  // Prevent hydration mismatch by only rendering collapsibles after mount
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const tablesList = React.useMemo(
     () => tables.filter((t) => t.type === 'table'),
@@ -68,19 +75,33 @@ export const SchemaTree = React.memo(function SchemaTree({
     });
   };
 
+  // Get the viewport element for virtualization
+  const getScrollElement = React.useCallback(() => {
+    if (!scrollAreaRef.current) return null;
+    // Find the viewport element within ScrollArea
+    const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+    return viewport as HTMLElement | null;
+  }, []);
+
   const tableVirtualizer = useVirtualizer({
     count: filteredTables.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement,
     estimateSize: () => 32,
-    overscan: 5,
+    overscan: 10,
   });
 
   const viewVirtualizer = useVirtualizer({
     count: filteredViews.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement,
     estimateSize: () => 32,
-    overscan: 5,
+    overscan: 10,
   });
+
+  // Force virtualizer to recalculate when sections expand/collapse
+  React.useEffect(() => {
+    tableVirtualizer.measure();
+    viewVirtualizer.measure();
+  }, [expandedSections, tableVirtualizer, viewVirtualizer]);
 
   if (loading) {
     return (
@@ -91,7 +112,7 @@ export const SchemaTree = React.memo(function SchemaTree({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between p-2 border-b">
         <span className="text-sm font-medium">Schema</span>
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRefresh}>
@@ -121,9 +142,17 @@ export const SchemaTree = React.memo(function SchemaTree({
         </div>
       </div>
 
-      <ScrollArea className="flex-1" ref={parentRef}>
+      <ScrollArea className="flex-1 overflow-hidden" ref={scrollAreaRef}>
         <div className="p-2 space-y-1">
-          {filteredTables.length > 0 && (
+          {!isMounted && filteredTables.length > 0 && (
+            <div className="p-1">
+              <div className="flex items-center gap-1 p-1 text-sm">
+                <Table2 className="h-4 w-4 text-muted-foreground" />
+                <span>Tables ({filteredTables.length})</span>
+              </div>
+            </div>
+          )}
+          {isMounted && filteredTables.length > 0 && (
             <Collapsible
               open={expandedSections.has('tables')}
               onOpenChange={() => toggleSection('tables')}
@@ -138,7 +167,7 @@ export const SchemaTree = React.memo(function SchemaTree({
                 <Table2 className="h-4 w-4 text-muted-foreground" />
                 <span>Tables ({filteredTables.length})</span>
               </CollapsibleTrigger>
-              <CollapsibleContent>
+              <CollapsibleContent className="overflow-visible">
                 <div className="ml-4 space-y-0.5">
                   {filteredTables.length > 50 ? (
                     <div
@@ -203,7 +232,15 @@ export const SchemaTree = React.memo(function SchemaTree({
             </Collapsible>
           )}
 
-          {filteredViews.length > 0 && (
+          {!isMounted && filteredViews.length > 0 && (
+            <div className="p-1">
+              <div className="flex items-center gap-1 p-1 text-sm">
+                <Eye className="h-4 w-4 text-muted-foreground" />
+                <span>Views ({filteredViews.length})</span>
+              </div>
+            </div>
+          )}
+          {isMounted && filteredViews.length > 0 && (
             <Collapsible
               open={expandedSections.has('views')}
               onOpenChange={() => toggleSection('views')}
@@ -218,7 +255,7 @@ export const SchemaTree = React.memo(function SchemaTree({
                 <Eye className="h-4 w-4 text-muted-foreground" />
                 <span>Views ({filteredViews.length})</span>
               </CollapsibleTrigger>
-              <CollapsibleContent>
+              <CollapsibleContent className="overflow-visible">
                 <div className="ml-4 space-y-0.5">
                   {filteredViews.length > 50 ? (
                     <div

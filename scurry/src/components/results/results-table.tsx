@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { MobileTableWrapper } from '@/components/ui/mobile-table-wrapper';
 import { cn } from '@/lib/utils';
 import type { QueryResult } from '@/types';
 
@@ -103,57 +104,59 @@ export const ResultsTable = React.memo(function ResultsTable({ result }: Results
   if (result.rows.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-muted-foreground">
-        No rows returned
+        <span className="flex items-center gap-2">
+          <span className="text-xl">🐿️</span>
+          No rows returned
+        </span>
       </div>
     );
   }
 
   return (
     <div className="space-y-2 min-w-0">
-      <div
-        ref={tableContainerRef}
-        className="rounded-md border overflow-auto max-h-[500px]"
-      >
-        <Table>
-          <TableHeader className="sticky top-0 bg-background z-10">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {paddingTop > 0 && (
-              <tr>
-                <td style={{ height: `${paddingTop}px` }} colSpan={columns.length} />
-              </tr>
-            )}
-            {virtualRows.map((virtualRow) => {
-              const row = rows[virtualRow.index];
-              return (
-                <TableRow key={row.id} data-index={virtualRow.index}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="font-mono text-sm">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
+      <MobileTableWrapper maxHeight="max-h-[350px] md:max-h-[500px]">
+        <div ref={tableContainerRef} className="min-w-full">
+          <Table>
+            <TableHeader className="sticky top-0 bg-background z-20">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} className="whitespace-nowrap bg-background">
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
                   ))}
                 </TableRow>
-              );
-            })}
-            {paddingBottom > 0 && (
-              <tr>
-                <td style={{ height: `${paddingBottom}px` }} colSpan={columns.length} />
-              </tr>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {paddingTop > 0 && (
+                <tr>
+                  <td style={{ height: `${paddingTop}px` }} colSpan={columns.length} />
+                </tr>
+              )}
+              {virtualRows.map((virtualRow) => {
+                const row = rows[virtualRow.index];
+                return (
+                  <TableRow key={row.id} data-index={virtualRow.index}>
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id} className="font-mono text-sm md:text-sm text-xs">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })}
+              {paddingBottom > 0 && (
+                <tr>
+                  <td style={{ height: `${paddingBottom}px` }} colSpan={columns.length} />
+                </tr>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </MobileTableWrapper>
 
       <div className="flex items-center justify-between px-2">
         <div className="text-sm text-muted-foreground">
@@ -186,14 +189,14 @@ const CellValue = React.memo(function CellValue({
   const isLong = displayValue.length > 50;
 
   const content = (
-    <div className={cn('group relative max-w-[250px]')}>
+    <div className={cn('group relative max-w-[120px] sm:max-w-[180px] md:max-w-[250px]')}>
       <span className="block truncate">
         {displayValue}
       </span>
       <Button
         variant="ghost"
         size="icon"
-        className="absolute right-0 top-0 h-6 w-6 opacity-0 group-hover:opacity-100"
+        className="absolute right-0 top-0 h-6 w-6 opacity-0 group-hover:opacity-100 touch-target"
         onClick={() => onCopy(strValue, cellId)}
       >
         {isCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}

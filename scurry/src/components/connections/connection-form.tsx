@@ -163,56 +163,54 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Database Type</FormLabel>
-                    <Select value={field.value} onValueChange={handleTypeChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {databaseTypes.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type.charAt(0).toUpperCase() + type.slice(1)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="color"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Color</FormLabel>
-                    <div className="flex gap-1">
-                      {connectionColors.map((color) => (
-                        <button
-                          key={color}
-                          type="button"
-                          className={`h-8 w-8 rounded-md border-2 transition-all ${
-                            field.value === color ? 'border-foreground scale-110' : 'border-transparent'
-                          }`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => field.onChange(color)}
-                        />
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Database Type</FormLabel>
+                  <Select value={field.value} onValueChange={handleTypeChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {databaseTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </SelectItem>
                       ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="color"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Color</FormLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {connectionColors.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`h-8 w-8 rounded-md border-2 transition-all ${
+                          field.value === color ? 'border-foreground scale-110' : 'border-transparent'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => field.onChange(color)}
+                      />
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {!isSqlite && (
               <div className="grid grid-cols-3 gap-4">

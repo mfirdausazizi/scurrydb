@@ -6,11 +6,17 @@ import { format } from 'sql-formatter';
 import { toast } from 'sonner';
 import { AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { QueryToolbar } from '@/components/editor/query-toolbar';
 import { QueryHistory } from '@/components/editor/query-history';
 import { ChatPanel } from '@/components/ai/chat-panel';
 import { ResultsTable } from '@/components/results';
-import { useConnections } from '@/hooks';
+import { useConnections, useMediaQuery } from '@/hooks';
 import { useQueryStore } from '@/lib/store';
 import type { QueryResult } from '@/types';
 
@@ -34,6 +40,8 @@ export default function QueryPage() {
   const [result, setResult] = React.useState<QueryResult | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
   const [showAI, setShowAI] = React.useState(false);
+  
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   React.useEffect(() => {
     if (!selectedConnectionId && connections.length > 0) {
@@ -145,12 +153,48 @@ export default function QueryPage() {
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col min-w-0 overflow-hidden">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold tracking-tight">Query Editor</h1>
-        <p className="text-muted-foreground">
+      <div className="mb-3 md:mb-4">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Query Editor</h1>
+        <p className="text-muted-foreground text-sm md:text-base">
           Write and execute SQL queries. Press Ctrl+Enter (or Cmd+Enter) to run.
         </p>
       </div>
+
+      {/* Mobile Sheets for History and AI */}
+      <Sheet open={showHistory && isMobile} onOpenChange={setShowHistory}>
+        <SheetContent side="bottom" className="h-[60vh]">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Query History</SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100%-60px)] overflow-auto">
+            <QueryHistory
+              history={history}
+              onSelect={(sql) => {
+                setCurrentQuery(sql);
+                setShowHistory(false);
+              }}
+              onClose={() => setShowHistory(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showAI && isMobile} onOpenChange={setShowAI}>
+        <SheetContent side="bottom" className="h-[70vh]">
+          <SheetHeader className="pb-4">
+            <SheetTitle>AI Assistant</SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100%-60px)] overflow-hidden">
+            <ChatPanel
+              connectionId={selectedConnectionId || undefined}
+              onInsertSQL={(sql) => {
+                setCurrentQuery(sql);
+                setShowAI(false);
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <div className="flex-1 flex min-h-0 overflow-hidden rounded-lg border bg-card">
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -167,10 +211,11 @@ export default function QueryPage() {
             executing={executing}
             hasResults={!!result && result.rows.length > 0}
             showAI={showAI}
+            showHistory={showHistory}
           />
 
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            <div className="h-[300px] flex-shrink-0">
+            <div className="h-[180px] md:h-[300px] flex-shrink-0">
               <SqlEditor
                 value={currentQuery}
                 onChange={setCurrentQuery}
@@ -178,7 +223,7 @@ export default function QueryPage() {
               />
             </div>
 
-            <div className="flex-1 overflow-auto p-4 border-t min-h-0">
+            <div className="flex-1 overflow-auto p-3 md:p-4 border-t min-h-0">
               {result ? (
                 result.error ? (
                   <Card className="border-destructive">
@@ -198,19 +243,23 @@ export default function QueryPage() {
                   <ResultsTable result={result} />
                 )
               ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  {connectionsLoading
-                    ? 'Loading connections...'
-                    : connections.length === 0
-                    ? 'No connections available. Add a connection first.'
-                    : 'Run a query to see results'}
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+                  <span className="text-2xl">🐿️</span>
+                  <span className="text-center text-sm md:text-base">
+                    {connectionsLoading
+                      ? 'Loading connections...'
+                      : connections.length === 0
+                      ? 'No connections available. Add a connection first.'
+                      : 'Run a query to see results'}
+                  </span>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {showHistory && (
+        {/* Desktop History Panel */}
+        {showHistory && !isMobile && (
           <div className="w-[300px] border-l flex-shrink-0 overflow-hidden">
             <QueryHistory
               history={history}
@@ -223,7 +272,8 @@ export default function QueryPage() {
           </div>
         )}
 
-        {showAI && (
+        {/* Desktop AI Panel */}
+        {showAI && !isMobile && (
           <div className="w-[350px] border-l flex-shrink-0 flex flex-col overflow-hidden">
             <ChatPanel
               connectionId={selectedConnectionId || undefined}

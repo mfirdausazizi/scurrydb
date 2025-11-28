@@ -2,12 +2,13 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Mail, Trash2, Shield, Crown, Eye, UserPlus, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Mail, Trash2, Shield, Crown, Eye, UserPlus, Loader2, Lock, Settings, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -28,6 +29,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { ProfileList } from '@/components/permissions/profile-list';
+import { MemberAssignments } from '@/components/permissions/member-assignments';
+import { CreateProfileDialog } from '@/components/permissions/create-profile-dialog';
 
 interface Team {
   id: string;
@@ -85,6 +89,8 @@ export default function TeamSettingsPage() {
   const [inviteEmail, setInviteEmail] = React.useState('');
   const [inviteRole, setInviteRole] = React.useState<string>('member');
   const [inviting, setInviting] = React.useState(false);
+  const [createProfileDialogOpen, setCreateProfileDialogOpen] = React.useState(false);
+  const [profileListKey, setProfileListKey] = React.useState(0);
 
   React.useEffect(() => {
     fetchTeamData();
@@ -282,198 +288,275 @@ export default function TeamSettingsPage() {
         </div>
       </div>
 
-      <div className="grid gap-6">
-        {/* Team Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Team Information</CardTitle>
-            <CardDescription>Update your team details</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="teamName">Team Name</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="teamName"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  disabled={!canManage}
-                />
+      <Tabs defaultValue="general" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="general" className="gap-2">
+            <Settings className="h-4 w-4" />
+            General
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="gap-2">
+            <Lock className="h-4 w-4" />
+            Permissions
+          </TabsTrigger>
+        </TabsList>
+
+        {/* General Settings Tab */}
+        <TabsContent value="general" className="space-y-6">
+          {/* Team Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Information</CardTitle>
+              <CardDescription>Update your team details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="teamName">Team Name</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="teamName"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    disabled={!canManage}
+                  />
+                  {canManage && (
+                    <Button onClick={handleUpdateTeam} disabled={saving || teamName === team.name}>
+                      {saving ? 'Saving...' : 'Save'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Team URL</Label>
+                <Input value={team.slug} disabled />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Members */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Members</CardTitle>
+              <CardDescription>{members.length} member{members.length !== 1 ? 's' : ''}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {canManage && (
+                <form onSubmit={handleInviteMember} className="flex gap-2">
+                  <Input
+                    placeholder="Email address"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Select value={inviteRole} onValueChange={setInviteRole}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isOwner && <SelectItem value="admin">Admin</SelectItem>}
+                      <SelectItem value="member">Member</SelectItem>
+                      <SelectItem value="viewer">Viewer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="submit" disabled={inviting || !inviteEmail.trim()}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    {inviting ? 'Inviting...' : 'Invite'}
+                  </Button>
+                </form>
+              )}
+
+              <div className="divide-y">
+                {members.map((member) => {
+                  const RoleIcon = roleIcons[member.role] || Users;
+                  return (
+                    <div key={member.id} className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                          <span className="text-sm font-medium">
+                            {member.user?.email?.[0]?.toUpperCase() || '?'}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium">{member.user?.name || member.user?.email}</p>
+                          <p className="text-sm text-muted-foreground">{member.user?.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {canManage && member.role !== 'owner' ? (
+                          <Select
+                            value={member.role}
+                            onValueChange={(role) => handleUpdateMemberRole(member.userId, role)}
+                          >
+                            <SelectTrigger className="w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isOwner && <SelectItem value="admin">Admin</SelectItem>}
+                              <SelectItem value="member">Member</SelectItem>
+                              <SelectItem value="viewer">Viewer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1">
+                            <RoleIcon className="h-3 w-3" />
+                            {roleLabels[member.role]}
+                          </Badge>
+                        )}
+                        {canManage && member.role !== 'owner' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveMember(member.userId)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pending Invitations */}
+          {canManage && invitations.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Pending Invitations</CardTitle>
+                <CardDescription>{invitations.length} pending</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="divide-y">
+                  {invitations.map((invitation) => (
+                    <div key={invitation.id} className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                          <Mail className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{invitation.email}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Invited as {roleLabels[invitation.role]} • Expires{' '}
+                            {new Date(invitation.expiresAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCancelInvitation(invitation.id)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Danger Zone */}
+          {isOwner && (
+            <Card className="border-destructive">
+              <CardHeader>
+                <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                <CardDescription>
+                  Irreversible and destructive actions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Team
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete team?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete the team &quot;{team.name}&quot; and all its data,
+                        including shared connections and saved queries. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Delete Team
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Permissions Tab */}
+        <TabsContent value="permissions" className="space-y-6">
+          {!canManage && (
+            <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950">
+              <CardHeader>
+                <CardTitle className="text-sm">View Only</CardTitle>
+                <CardDescription>
+                  You can view permission settings but cannot make changes. Contact a team owner or admin to modify permissions.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+
+          {/* Permission Profiles */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Permission Profiles
+                  </CardTitle>
+                  <CardDescription>
+                    Create reusable permission templates for your team members
+                  </CardDescription>
+                </div>
                 {canManage && (
-                  <Button onClick={handleUpdateTeam} disabled={saving || teamName === team.name}>
-                    {saving ? 'Saving...' : 'Save'}
+                  <Button onClick={() => setCreateProfileDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Profile
                   </Button>
                 )}
               </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Team URL</Label>
-              <Input value={team.slug} disabled />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Members */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Team Members</CardTitle>
-            <CardDescription>{members.length} member{members.length !== 1 ? 's' : ''}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {canManage && (
-              <form onSubmit={handleInviteMember} className="flex gap-2">
-                <Input
-                  placeholder="Email address"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="flex-1"
-                />
-                <Select value={inviteRole} onValueChange={setInviteRole}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isOwner && <SelectItem value="admin">Admin</SelectItem>}
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button type="submit" disabled={inviting || !inviteEmail.trim()}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  {inviting ? 'Inviting...' : 'Invite'}
-                </Button>
-              </form>
-            )}
-
-            <div className="divide-y">
-              {members.map((member) => {
-                const RoleIcon = roleIcons[member.role] || Users;
-                return (
-                  <div key={member.id} className="flex items-center justify-between py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                        <span className="text-sm font-medium">
-                          {member.user?.email?.[0]?.toUpperCase() || '?'}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium">{member.user?.name || member.user?.email}</p>
-                        <p className="text-sm text-muted-foreground">{member.user?.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {canManage && member.role !== 'owner' ? (
-                        <Select
-                          value={member.role}
-                          onValueChange={(role) => handleUpdateMemberRole(member.userId, role)}
-                        >
-                          <SelectTrigger className="w-28">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {isOwner && <SelectItem value="admin">Admin</SelectItem>}
-                            <SelectItem value="member">Member</SelectItem>
-                            <SelectItem value="viewer">Viewer</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge variant="secondary" className="gap-1">
-                          <RoleIcon className="h-3 w-3" />
-                          {roleLabels[member.role]}
-                        </Badge>
-                      )}
-                      {canManage && member.role !== 'owner' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveMember(member.userId)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pending Invitations */}
-        {canManage && invitations.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Pending Invitations</CardTitle>
-              <CardDescription>{invitations.length} pending</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="divide-y">
-                {invitations.map((invitation) => (
-                  <div key={invitation.id} className="flex items-center justify-between py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                        <Mail className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{invitation.email}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Invited as {roleLabels[invitation.role]} • Expires{' '}
-                          {new Date(invitation.expiresAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleCancelInvitation(invitation.id)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ))}
-              </div>
+              <ProfileList key={profileListKey} teamId={teamId} canManage={canManage} />
             </CardContent>
           </Card>
-        )}
 
-        {/* Danger Zone */}
-        {isOwner && (
-          <Card className="border-destructive">
+          {/* Member Assignments */}
+          <Card>
             <CardHeader>
-              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Member Assignments
+              </CardTitle>
               <CardDescription>
-                Irreversible and destructive actions
+                Assign permission profiles or custom permissions to team members
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Team
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete team?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will permanently delete the team &quot;{team.name}&quot; and all its data,
-                      including shared connections and saved queries. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                      Delete Team
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <MemberAssignments teamId={teamId} canManage={canManage} />
             </CardContent>
           </Card>
-        )}
-      </div>
+        </TabsContent>
+      </Tabs>
+
+      <CreateProfileDialog
+        open={createProfileDialogOpen}
+        onOpenChange={setCreateProfileDialogOpen}
+        teamId={teamId}
+        onCreated={() => setProfileListKey((k) => k + 1)}
+      />
     </div>
   );
 }

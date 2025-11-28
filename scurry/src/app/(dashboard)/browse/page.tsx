@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Database, Loader2, AlertTriangle } from 'lucide-react';
+import { Database, Loader2, AlertTriangle, Table2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -13,6 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { SchemaTree, TableStructure } from '@/components/schema';
 import { useConnections } from '@/hooks';
 import { usePendingChangesStore } from '@/lib/store/pending-changes-store';
@@ -33,6 +40,56 @@ function BrowsePageContent() {
   const [structureLoading, setStructureLoading] = React.useState(false);
   const [preview, setPreview] = React.useState<QueryResult | null>(null);
   const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [sidebarWidth, setSidebarWidth] = React.useState<number | null>(null); // null during SSR to avoid hydration mismatch
+  const [isResizing, setIsResizing] = React.useState(false);
+  const sidebarRef = React.useRef<HTMLDivElement>(null);
+
+  // Sidebar resize handlers
+  const MIN_SIDEBAR_WIDTH = 160;
+  const MAX_SIDEBAR_WIDTH = 400;
+  const DEFAULT_SIDEBAR_WIDTH = 256;
+
+  // Initialize sidebar width on client only to avoid hydration mismatch
+  React.useEffect(() => {
+    setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+  }, []);
+
+  const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  React.useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const containerRect = sidebarRef.current?.parentElement?.getBoundingClientRect();
+      if (!containerRect) return;
+      
+      const newWidth = e.clientX - containerRect.left;
+      const clampedWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, newWidth));
+      setSidebarWidth(clampedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   // Select all pending changes and compute total
   const allPendingChanges = usePendingChangesStore((state) => state.pendingChanges);
@@ -126,6 +183,11 @@ function BrowsePageContent() {
     }
   }, [connections, selectedConnectionId]);
 
+  const handleSelectTable = React.useCallback((tableName: string) => {
+    setSelectedTable(tableName);
+    setSidebarOpen(false);
+  }, []);
+
   if (connectionsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -160,10 +222,10 @@ function BrowsePageContent() {
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col min-w-0 overflow-hidden">
-      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold tracking-tight">Schema Browser</h1>
+      <div className="flex items-center justify-between mb-4 gap-3 md:gap-4 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Schema Browser</h1>
             {totalPendingChanges > 0 && (
               <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 gap-1">
                 <AlertTriangle className="h-3 w-3" />
@@ -171,12 +233,12 @@ function BrowsePageContent() {
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm md:text-base">
             Explore your database schema and data.
           </p>
         </div>
         <Select value={selectedConnectionId || ''} onValueChange={setSelectedConnectionId}>
-          <SelectTrigger className="w-[250px] flex-shrink-0">
+          <SelectTrigger className="w-full sm:w-[200px] md:w-[250px] flex-shrink-0">
             <SelectValue placeholder="Select connection" />
           </SelectTrigger>
           <SelectContent>
@@ -195,8 +257,40 @@ function BrowsePageContent() {
         </Select>
       </div>
 
+      {/* Mobile Schema Tree Sheet */}
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" className="w-[280px] p-0">
+          <SheetHeader className="p-4 border-b">
+            <SheetTitle>Schema Tree</SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100%-60px)]">
+            <SchemaTree
+              tables={tables}
+              loading={tablesLoading}
+              selectedTable={selectedTable}
+              onSelectTable={handleSelectTable}
+              onRefresh={fetchTables}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Floating Action Button for Mobile */}
+      <Button
+        className="fixed bottom-4 right-4 md:hidden z-50 rounded-full h-14 w-14 shadow-lg touch-target"
+        onClick={() => setSidebarOpen(true)}
+      >
+        <Table2 className="h-6 w-6" />
+        <span className="sr-only">Browse tables</span>
+      </Button>
+
       <div className="flex-1 flex min-h-0 overflow-hidden rounded-lg border bg-card">
-        <div className="w-64 border-r flex-shrink-0 overflow-hidden">
+        {/* Desktop Sidebar */}
+        <div 
+          ref={sidebarRef}
+          className="hidden md:flex flex-col border-r flex-shrink-0 overflow-hidden"
+          style={{ width: sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH }}
+        >
           <SchemaTree
             tables={tables}
             loading={tablesLoading}
@@ -206,31 +300,50 @@ function BrowsePageContent() {
           />
         </div>
 
-        <div className="flex-1 overflow-auto p-4 min-w-0">
-          {selectedTable ? (
-            <TableStructure
-              tableName={selectedTable}
-              columns={columns}
-              indexes={indexes}
-              preview={preview}
-              loading={structureLoading}
-              previewLoading={previewLoading}
-              connectionId={selectedConnectionId}
-              onLoadPreview={fetchPreview}
-              onRefreshPreview={fetchPreview}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <Card className="border-dashed max-w-md">
-                <CardHeader className="text-center">
-                  <CardTitle className="text-lg">Select a table</CardTitle>
-                  <CardDescription>
-                    Choose a table from the schema tree to view its structure and data.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
-          )}
+        {/* Resize Handle */}
+        <div
+          className="hidden md:flex items-center justify-center w-1 hover:w-1.5 bg-transparent hover:bg-primary/20 cursor-col-resize transition-all flex-shrink-0 group"
+          onMouseDown={handleResizeStart}
+        >
+          <div className="h-8 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
+        </div>
+
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <div className="flex-1 flex flex-col p-3 md:p-4 min-w-0 overflow-hidden">
+            {selectedTable ? (
+              <TableStructure
+                tableName={selectedTable}
+                columns={columns}
+                indexes={indexes}
+                preview={preview}
+                loading={structureLoading}
+                previewLoading={previewLoading}
+                connectionId={selectedConnectionId}
+                onLoadPreview={fetchPreview}
+                onRefreshPreview={fetchPreview}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full min-h-[300px] md:min-h-[400px]">
+                <Card className="border-dashed max-w-md w-full mx-4">
+                  <CardHeader className="text-center">
+                    <div className="mx-auto mb-2 text-3xl">🐿️</div>
+                    <CardTitle className="text-lg">Select a table</CardTitle>
+                    <CardDescription>
+                      {/* Mobile hint */}
+                      <span className="md:hidden">
+                        Tap the button below to browse tables.
+                      </span>
+                      {/* Desktop hint */}
+                      <span className="hidden md:inline">
+                        Choose a table from the schema tree to view its structure and data.
+                      </span>
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </div>
+            )}
+          </div>
+          {/* Pagination will appear here from TableStructure */}
         </div>
       </div>
     </div>

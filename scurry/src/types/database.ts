@@ -55,6 +55,7 @@ export interface ColumnDefinition {
   defaultValue?: string;
   isPrimaryKey: boolean;
   isForeignKey: boolean;
+  autoIncrement?: boolean;
   references?: {
     table: string;
     column: string;

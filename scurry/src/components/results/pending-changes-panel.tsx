@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Save, X, AlertTriangle, Loader2, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Save, X, AlertTriangle, Loader2, History, ChevronDown, ChevronUp, Code, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -25,10 +25,54 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { usePendingChangesStore, getStoreKey, emptyChanges } from '@/lib/store/pending-changes-store';
-import type { PendingChanges, DataChangeLog } from '@/types';
+import type { PendingChanges, DataChangeLog, PendingCellChange, PendingRowInsert, PendingRowDelete } from '@/types';
+
+// SQL generation helpers
+function escapeValue(value: unknown): string {
+  if (value === null) return 'NULL';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function generateUpdateSql(
+  tableName: string,
+  update: PendingCellChange,
+  primaryKeyColumns: string[],
+  rowData: Record<string, unknown>
+): string {
+  const setClause = `${update.column} = ${escapeValue(update.newValue)}`;
+  const whereClause = primaryKeyColumns
+    .map((pk) => `${pk} = ${escapeValue(rowData[pk])}`)
+    .join(' AND ');
+  return `UPDATE ${tableName} SET ${setClause} WHERE ${whereClause};`;
+}
+
+function generateInsertSql(tableName: string, insert: PendingRowInsert): string {
+  const columns = Object.keys(insert.values).join(', ');
+  const values = Object.values(insert.values).map(escapeValue).join(', ');
+  return `INSERT INTO ${tableName} (${columns}) VALUES (${values});`;
+}
+
+function generateDeleteSql(
+  tableName: string,
+  del: PendingRowDelete,
+  primaryKeyColumns: string[]
+): string {
+  const whereClause = primaryKeyColumns
+    .map((pk) => `${pk} = ${escapeValue(del.rowData[pk])}`)
+    .join(' AND ');
+  return `DELETE FROM ${tableName} WHERE ${whereClause};`;
+}
 
 interface PendingChangesPanelProps {
   currentTableName: string;
@@ -39,6 +83,8 @@ interface PendingChangesPanelProps {
   changeHistory?: DataChangeLog[];
   historyLoading?: boolean;
   onLoadHistory?: () => void;
+  primaryKeyColumns?: string[];
+  previewData?: Record<string, unknown>[];
 }
 
 export function PendingChangesPanel({
@@ -50,10 +96,13 @@ export function PendingChangesPanel({
   changeHistory = [],
   historyLoading = false,
   onLoadHistory,
+  primaryKeyColumns = [],
+  previewData = [],
 }: PendingChangesPanelProps) {
   const [showConfirmDialog, setShowConfirmDialog] = React.useState(false);
   const [showDiscardDialog, setShowDiscardDialog] = React.useState(false);
   const [showAllTables, setShowAllTables] = React.useState(false);
+  const [showChangesPreview, setShowChangesPreview] = React.useState(false);
 
   // Get store key for current table
   const currentStoreKey = currentConnectionId ? getStoreKey(currentConnectionId, currentTableName) : null;
@@ -211,6 +260,118 @@ export function PendingChangesPanel({
               </Button>
             </div>
           </div>
+        )}
+
+        {/* Expandable Changes Preview */}
+        {hasCurrentTableChanges && (
+          <Collapsible open={showChangesPreview} onOpenChange={setShowChangesPreview}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-between h-8 text-muted-foreground hover:text-foreground"
+              >
+                <span className="flex items-center gap-2">
+                  <Eye className="h-3.5 w-3.5" />
+                  View Changes
+                </span>
+                {showChangesPreview ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <TooltipProvider>
+                <div className="mt-2 p-3 rounded-md border bg-muted/50 space-y-3 max-h-[200px] overflow-auto">
+                  {/* Updates */}
+                  {currentChanges.updates.length > 0 && (
+                    <div className="space-y-1">
+                      <h5 className="text-xs font-medium text-amber-700 dark:text-amber-400">Updates</h5>
+                      {currentChanges.updates.map((update, i) => {
+                        const rowData = previewData[update.rowIndex] || {};
+                        const sql = generateUpdateSql(currentTableName, update, primaryKeyColumns, rowData);
+                        return (
+                          <div key={i} className="flex items-center justify-between text-xs gap-2">
+                            <span className="truncate flex-1">
+                              <span className="font-mono text-muted-foreground">{update.column}:</span>{' '}
+                              <span className="text-red-600 line-through">{String(update.oldValue)}</span>{' → '}
+                              <span className="text-green-600">{String(update.newValue)}</span>
+                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                                  <Code className="h-3 w-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-md">
+                                <pre className="text-xs font-mono whitespace-pre-wrap">{sql}</pre>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Inserts */}
+                  {currentChanges.inserts.length > 0 && (
+                    <div className="space-y-1">
+                      <h5 className="text-xs font-medium text-green-700 dark:text-green-400">Inserts</h5>
+                      {currentChanges.inserts.map((insert) => {
+                        const sql = generateInsertSql(currentTableName, insert);
+                        return (
+                          <div key={insert.tempId} className="flex items-center justify-between text-xs gap-2">
+                            <span className="truncate flex-1 font-mono">
+                              {JSON.stringify(insert.values)}
+                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                                  <Code className="h-3 w-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-md">
+                                <pre className="text-xs font-mono whitespace-pre-wrap">{sql}</pre>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Deletes */}
+                  {currentChanges.deletes.length > 0 && (
+                    <div className="space-y-1">
+                      <h5 className="text-xs font-medium text-red-700 dark:text-red-400">Deletes</h5>
+                      {currentChanges.deletes.map((del) => {
+                        const sql = generateDeleteSql(currentTableName, del, primaryKeyColumns);
+                        return (
+                          <div key={del.rowIndex} className="flex items-center justify-between text-xs gap-2">
+                            <span className="truncate flex-1 font-mono">
+                              Row {del.rowIndex}: {JSON.stringify(del.rowData)}
+                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                                  <Code className="h-3 w-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-md">
+                                <pre className="text-xs font-mono whitespace-pre-wrap">{sql}</pre>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </TooltipProvider>
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Other Tables with Changes */}

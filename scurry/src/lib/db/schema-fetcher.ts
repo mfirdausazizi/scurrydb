@@ -134,7 +134,8 @@ async function fetchMySqlColumns(
         COLUMN_TYPE as type,
         IS_NULLABLE as nullable,
         COLUMN_DEFAULT as default_value,
-        COLUMN_KEY as column_key
+        COLUMN_KEY as column_key,
+        EXTRA as extra
       FROM information_schema.COLUMNS 
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
       ORDER BY ORDINAL_POSITION
@@ -146,6 +147,7 @@ async function fetchMySqlColumns(
       nullable: string;
       default_value: string | null;
       column_key: string;
+      extra: string;
     }>).map((row) => ({
       name: row.name,
       type: row.type,
@@ -153,6 +155,7 @@ async function fetchMySqlColumns(
       defaultValue: row.default_value || undefined,
       isPrimaryKey: row.column_key === 'PRI',
       isForeignKey: row.column_key === 'MUL',
+      autoIncrement: row.extra?.toLowerCase().includes('auto_increment') || false,
     }));
   } finally {
     await conn.end();
@@ -193,14 +196,22 @@ async function fetchPostgresColumns(
       ORDER BY c.ordinal_position
     `, [tableName]);
 
-    return result.rows.map((row) => ({
-      name: row.name,
-      type: row.type,
-      nullable: row.nullable === 'YES',
-      defaultValue: row.default_value || undefined,
-      isPrimaryKey: row.is_primary_key,
-      isForeignKey: false,
-    }));
+    return result.rows.map((row) => {
+      // PostgreSQL serial/identity columns have default values starting with 'nextval('
+      const defaultValue = row.default_value || undefined;
+      const isAutoIncrement = typeof defaultValue === 'string' && 
+        (defaultValue.startsWith('nextval(') || defaultValue.includes('_seq\''));
+      
+      return {
+        name: row.name,
+        type: row.type,
+        nullable: row.nullable === 'YES',
+        defaultValue,
+        isPrimaryKey: row.is_primary_key,
+        isForeignKey: false,
+        autoIncrement: isAutoIncrement,
+      };
+    });
   } finally {
     await client.end();
   }
@@ -331,17 +342,34 @@ function fetchSqliteColumns(connection: DatabaseConnection, tableName: string): 
       to: string;
     }>;
     
+    // Get table schema to check for AUTOINCREMENT keyword
+    const schemaResult = db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name=?`
+    ).get(tableName) as { sql: string } | undefined;
+    const tableSchema = schemaResult?.sql?.toUpperCase() || '';
+    const hasAutoincrement = tableSchema.includes('AUTOINCREMENT');
+    
     const fkMap = new Map(foreignKeys.map((fk) => [fk.from, { table: fk.table, column: fk.to }]));
     
-    return columns.map((col) => ({
-      name: col.name,
-      type: col.type || 'unknown',
-      nullable: col.notnull === 0,
-      defaultValue: col.dflt_value || undefined,
-      isPrimaryKey: col.pk === 1,
-      isForeignKey: fkMap.has(col.name),
-      references: fkMap.get(col.name),
-    }));
+    return columns.map((col) => {
+      // In SQLite, INTEGER PRIMARY KEY columns auto-increment by default (rowid alias)
+      // If AUTOINCREMENT keyword is present, it's explicitly auto-incrementing
+      const isIntegerPrimaryKey = col.pk === 1 && 
+        col.type.toUpperCase() === 'INTEGER';
+      const isAutoIncrement = isIntegerPrimaryKey || 
+        (col.pk === 1 && hasAutoincrement);
+      
+      return {
+        name: col.name,
+        type: col.type || 'unknown',
+        nullable: col.notnull === 0,
+        defaultValue: col.dflt_value || undefined,
+        isPrimaryKey: col.pk === 1,
+        isForeignKey: fkMap.has(col.name),
+        autoIncrement: isAutoIncrement,
+        references: fkMap.get(col.name),
+      };
+    });
   } finally {
     db.close();
   }

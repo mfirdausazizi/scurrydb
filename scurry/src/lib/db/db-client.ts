@@ -287,6 +287,63 @@ function initializeSqliteSchema(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(table_name);
     CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at);
+    
+    CREATE TABLE IF NOT EXISTS permission_profiles (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_permission_profiles_team_id ON permission_profiles(team_id);
+    
+    CREATE TABLE IF NOT EXISTS profile_connection_permissions (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      connection_id TEXT NOT NULL,
+      can_view INTEGER DEFAULT 1,
+      can_edit INTEGER DEFAULT 0,
+      allowed_tables TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (profile_id) REFERENCES permission_profiles(id) ON DELETE CASCADE,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
+      UNIQUE(profile_id, connection_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_profile_id ON profile_connection_permissions(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_connection_id ON profile_connection_permissions(connection_id);
+    
+    CREATE TABLE IF NOT EXISTS profile_column_restrictions (
+      id TEXT PRIMARY KEY,
+      profile_permission_id TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      hidden_columns TEXT NOT NULL,
+      FOREIGN KEY (profile_permission_id) REFERENCES profile_connection_permissions(id) ON DELETE CASCADE,
+      UNIQUE(profile_permission_id, table_name)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_profile_column_restrictions_profile_permission_id ON profile_column_restrictions(profile_permission_id);
+    
+    CREATE TABLE IF NOT EXISTS member_permission_assignments (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      profile_id TEXT,
+      custom_permissions TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (profile_id) REFERENCES permission_profiles(id) ON DELETE SET NULL,
+      UNIQUE(team_id, user_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id);
+    CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id);
   `);
 }
 
@@ -508,6 +565,55 @@ function getSqliteSchemaStatements(): string[] {
     `CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(table_name)`,
     `CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at)`,
+    `CREATE TABLE IF NOT EXISTS permission_profiles (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_permission_profiles_team_id ON permission_profiles(team_id)`,
+    `CREATE TABLE IF NOT EXISTS profile_connection_permissions (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      connection_id TEXT NOT NULL,
+      can_view INTEGER DEFAULT 1,
+      can_edit INTEGER DEFAULT 0,
+      allowed_tables TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (profile_id) REFERENCES permission_profiles(id) ON DELETE CASCADE,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
+      UNIQUE(profile_id, connection_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_profile_id ON profile_connection_permissions(profile_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_connection_id ON profile_connection_permissions(connection_id)`,
+    `CREATE TABLE IF NOT EXISTS profile_column_restrictions (
+      id TEXT PRIMARY KEY,
+      profile_permission_id TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      hidden_columns TEXT NOT NULL,
+      FOREIGN KEY (profile_permission_id) REFERENCES profile_connection_permissions(id) ON DELETE CASCADE,
+      UNIQUE(profile_permission_id, table_name)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_profile_column_restrictions_profile_permission_id ON profile_column_restrictions(profile_permission_id)`,
+    `CREATE TABLE IF NOT EXISTS member_permission_assignments (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      profile_id TEXT,
+      custom_permissions TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (profile_id) REFERENCES permission_profiles(id) ON DELETE SET NULL,
+      UNIQUE(team_id, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id)`,
   ];
 }
 
@@ -701,6 +807,56 @@ function getPostgresSchema(): string {
     CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(table_name);
     CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at);
+    
+    CREATE TABLE IF NOT EXISTS permission_profiles (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_permission_profiles_team_id ON permission_profiles(team_id);
+    
+    CREATE TABLE IF NOT EXISTS profile_connection_permissions (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL REFERENCES permission_profiles(id) ON DELETE CASCADE,
+      connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+      can_view BOOLEAN DEFAULT true,
+      can_edit BOOLEAN DEFAULT false,
+      allowed_tables JSONB,
+      created_at TIMESTAMPTZ NOT NULL,
+      UNIQUE(profile_id, connection_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_profile_id ON profile_connection_permissions(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_profile_connection_permissions_connection_id ON profile_connection_permissions(connection_id);
+    
+    CREATE TABLE IF NOT EXISTS profile_column_restrictions (
+      id TEXT PRIMARY KEY,
+      profile_permission_id TEXT NOT NULL REFERENCES profile_connection_permissions(id) ON DELETE CASCADE,
+      table_name TEXT NOT NULL,
+      hidden_columns JSONB NOT NULL,
+      UNIQUE(profile_permission_id, table_name)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_profile_column_restrictions_profile_permission_id ON profile_column_restrictions(profile_permission_id);
+    
+    CREATE TABLE IF NOT EXISTS member_permission_assignments (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      profile_id TEXT REFERENCES permission_profiles(id) ON DELETE SET NULL,
+      custom_permissions JSONB,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      UNIQUE(team_id, user_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id);
+    CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id);
+    CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id);
   `;
 }
 
@@ -759,9 +915,11 @@ export class UnifiedDbClient {
         changes: result.rowCount ?? 0,
       };
     } else if (this.dbType === 'turso' && client.turso) {
+      // Filter out undefined values for Turso compatibility
+      const tursoArgs = (params || []).map(p => p === undefined ? null : p) as (string | number | null)[];
       const result = await client.turso.execute({
         sql,
-        args: (params || []) as (string | number | null | undefined)[],
+        args: tursoArgs,
       });
       return {
         changes: result.rowsAffected,
@@ -787,9 +945,11 @@ export class UnifiedDbClient {
       const result = await client.postgres.query(convertedSql, params);
       return result.rows as T[];
     } else if (this.dbType === 'turso' && client.turso) {
+      // Filter out undefined values for Turso compatibility
+      const tursoArgs = (params || []).map(p => p === undefined ? null : p) as (string | number | null)[];
       const result = await client.turso.execute({
         sql,
-        args: (params || []) as (string | number | null | undefined)[],
+        args: tursoArgs,
       });
       return result.rows as T[];
     } else if (client.sqlite) {
@@ -808,9 +968,11 @@ export class UnifiedDbClient {
       const result = await client.postgres.query(convertedSql, params);
       return (result.rows[0] as T) || null;
     } else if (this.dbType === 'turso' && client.turso) {
+      // Filter out undefined values for Turso compatibility
+      const tursoArgs = (params || []).map(p => p === undefined ? null : p) as (string | number | null)[];
       const result = await client.turso.execute({
         sql,
-        args: (params || []) as (string | number | null | undefined)[],
+        args: tursoArgs,
       });
       return (result.rows[0] as T) || null;
     } else if (client.sqlite) {

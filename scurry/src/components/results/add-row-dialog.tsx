@@ -28,11 +28,16 @@ export function AddRowDialog({ open, onOpenChange, columns, onAdd }: AddRowDialo
   const [values, setValues] = React.useState<Record<string, string>>({});
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
+  // Filter out auto-increment columns - they are handled by the database
+  const editableColumns = React.useMemo(() => {
+    return columns.filter((col) => !col.autoIncrement);
+  }, [columns]);
+
   // Reset form when dialog opens
   React.useEffect(() => {
     if (open) {
       const initialValues: Record<string, string> = {};
-      columns.forEach((col) => {
+      editableColumns.forEach((col) => {
         if (col.defaultValue && col.defaultValue !== 'NULL') {
           initialValues[col.name] = col.defaultValue.replace(/^'|'$/g, '');
         } else {
@@ -42,7 +47,7 @@ export function AddRowDialog({ open, onOpenChange, columns, onAdd }: AddRowDialo
       setValues(initialValues);
       setErrors({});
     }
-  }, [open, columns]);
+  }, [open, editableColumns]);
 
   const handleValueChange = (columnName: string, value: string) => {
     setValues((prev) => ({ ...prev, [columnName]: value }));
@@ -60,7 +65,7 @@ export function AddRowDialog({ open, onOpenChange, columns, onAdd }: AddRowDialo
     const newErrors: Record<string, string> = {};
     const parsedValues: Record<string, unknown> = {};
 
-    for (const col of columns) {
+    for (const col of editableColumns) {
       const value = values[col.name]?.trim() ?? '';
       const colType = col.type.toLowerCase();
 
@@ -146,24 +151,24 @@ export function AddRowDialog({ open, onOpenChange, columns, onAdd }: AddRowDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl h-[90vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
           <DialogTitle>Add New Row</DialogTitle>
           <DialogDescription>
             Enter values for the new row. Required fields are marked with *.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <ScrollArea className="max-h-[50vh] pr-4">
-            <div className="space-y-4 py-4">
-              {columns.map((col) => {
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <ScrollArea className="flex-1 px-6 overflow-auto">
+            <div className="space-y-4 pb-4">
+              {editableColumns.map((col) => {
                 const isRequired = !col.nullable && !col.defaultValue;
                 const inputType = getInputType(col.type);
 
                 return (
                   <div key={col.name} className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Label htmlFor={col.name} className="font-mono text-sm">
                         {col.name}
                         {isRequired && <span className="text-red-500 ml-1">*</span>}
@@ -196,7 +201,7 @@ export function AddRowDialog({ open, onOpenChange, columns, onAdd }: AddRowDialo
             </div>
           </ScrollArea>
 
-          <DialogFooter className="mt-4">
+          <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t bg-background sticky bottom-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
