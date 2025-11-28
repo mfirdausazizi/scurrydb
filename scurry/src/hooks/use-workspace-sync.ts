@@ -60,9 +60,27 @@ export function useConnectionValidator() {
 /**
  * Hook to get the current workspace context for API calls.
  * Returns the teamId that should be passed to API endpoints.
+ * 
+ * Uses hydration-safe pattern to prevent SSR/client mismatch errors
+ * caused by Zustand's persist middleware.
  */
 export function useWorkspaceContext() {
   const { activeTeamId, activeTeam } = useWorkspaceStore();
+  const [isHydrated, setIsHydrated] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  // Return defaults during SSR to prevent hydration mismatch
+  // This ensures server and client render the same initial HTML
+  if (!isHydrated) {
+    return {
+      teamId: null,
+      teamName: null,
+      isTeamWorkspace: false,
+    };
+  }
 
   return {
     teamId: activeTeamId,

@@ -20,6 +20,7 @@ interface ConnectionCardProps {
   onDelete?: () => void;
   onConnect: () => void;
   isShared?: boolean;
+  isOwner?: boolean;
   permission?: string;
 }
 
@@ -29,6 +30,7 @@ export function ConnectionCard({
   onDelete, 
   onConnect,
   isShared = false,
+  isOwner = false,
   permission,
 }: ConnectionCardProps) {
   const [testing, setTesting] = React.useState(false);
@@ -91,7 +93,7 @@ export function ConnectionCard({
               <Play className="mr-2 h-4 w-4" />
               Connect
             </DropdownMenuItem>
-            {!isShared && (
+            {(!isShared || isOwner) && (
               <DropdownMenuItem onClick={handleTest} disabled={testing}>
                 {testing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -101,7 +103,7 @@ export function ConnectionCard({
                 Test Connection
               </DropdownMenuItem>
             )}
-            {!isShared && onEdit && onDelete && (
+            {onEdit && onDelete && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onEdit}>
@@ -125,7 +127,7 @@ export function ConnectionCard({
             {isShared && (
               <Badge variant="outline" className="gap-1">
                 <Share2 className="h-3 w-3" />
-                Shared
+                {isOwner ? 'You shared' : 'Shared'}
               </Badge>
             )}
             {permission && (

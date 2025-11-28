@@ -15,6 +15,8 @@ import type { DatabaseConnection } from '@/types';
 type SafeConnection = Omit<DatabaseConnection, 'password'> & {
   permission?: string;
   isShared?: boolean;
+  sharedBy?: string;
+  userId?: string;
 };
 
 export default function ConnectionsPage() {
@@ -26,6 +28,23 @@ export default function ConnectionsPage() {
   const [editingConnection, setEditingConnection] = React.useState<SafeConnection | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [connectionToDelete, setConnectionToDelete] = React.useState<SafeConnection | null>(null);
+  const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
+
+  // Fetch current user ID
+  React.useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const user = await response.json();
+          setCurrentUserId(user.id);
+        }
+      } catch (error) {
+        console.error('Failed to fetch current user:', error);
+      }
+    };
+    fetchCurrentUser();
+  }, []);
 
   const fetchConnections = React.useCallback(async () => {
     try {
@@ -37,11 +56,16 @@ export default function ConnectionsPage() {
         response = await fetch(`/api/teams/${teamId}/connections`);
         if (response.ok) {
           const data = await response.json();
-          // Transform shared connections to include connection details
-          const transformedConnections = data.map((sc: { connection?: SafeConnection; permission?: string }) => ({
+          // Transform shared connections to include connection details and sharedBy
+          const transformedConnections = data.map((sc: { 
+            connection?: SafeConnection; 
+            permission?: string;
+            sharedBy?: string;
+          }) => ({
             ...sc.connection,
             permission: sc.permission,
             isShared: true,
+            sharedBy: sc.sharedBy,
           })).filter((c: SafeConnection | undefined) => c);
           setConnections(transformedConnections);
         }
@@ -66,6 +90,7 @@ export default function ConnectionsPage() {
   }, [fetchConnections]);
 
   const handleCreate = async (data: ConnectionFormData) => {
+    // Create the connection (owned by user)
     const response = await fetch('/api/connections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,7 +101,32 @@ export default function ConnectionsPage() {
       throw new Error('Failed to create connection');
     }
 
-    toast.success('Connection created successfully');
+    const connection = await response.json();
+
+    // If in team workspace, auto-share with team
+    if (teamId) {
+      try {
+        const shareResponse = await fetch(`/api/teams/${teamId}/connections`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            connectionId: connection.id, 
+            permission: 'read',
+          }),
+        });
+        
+        if (shareResponse.ok) {
+          toast.success('Connection created and shared with team');
+        } else {
+          toast.success('Connection created (sharing failed - you can share it manually in team settings)');
+        }
+      } catch {
+        toast.success('Connection created (sharing failed - you can share it manually in team settings)');
+      }
+    } else {
+      toast.success('Connection created successfully');
+    }
+    
     fetchConnections();
   };
 
@@ -128,7 +178,12 @@ export default function ConnectionsPage() {
     );
   }
 
-  // Team workspace view - show shared connections (read-only management)
+  // Check if user owns a shared connection (they shared it)
+  const isConnectionOwner = (connection: SafeConnection) => {
+    return connection.sharedBy === currentUserId;
+  };
+
+  // Team workspace view - show shared connections with ability to create new ones
   if (isTeamWorkspace) {
     return (
       <div className="space-y-6">
@@ -142,12 +197,18 @@ export default function ConnectionsPage() {
               Shared database connections for this team.
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link href={`/teams/${teamId}/settings`}>
-              <Settings className="mr-2 h-4 w-4" />
-              Manage in Team Settings
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Connection
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/teams/${teamId}/settings`}>
+                <Settings className="mr-2 h-4 w-4" />
+                Manage Sharing
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {connections.length === 0 ? (
@@ -158,31 +219,64 @@ export default function ConnectionsPage() {
               </div>
               <CardTitle>No shared connections</CardTitle>
               <CardDescription>
-                Team admins can share connections in team settings.
+                Create a new connection to share with your team, or share existing connections in team settings.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex justify-center">
-              <Button asChild>
+            <CardContent className="flex justify-center gap-2">
+              <Button onClick={() => setFormOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Connection
+              </Button>
+              <Button asChild variant="outline">
                 <Link href={`/teams/${teamId}/settings`}>
                   <Settings className="mr-2 h-4 w-4" />
-                  Go to Team Settings
+                  Share Existing
                 </Link>
               </Button>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {connections.map((connection) => (
-              <ConnectionCard
-                key={connection.id}
-                connection={connection}
-                onConnect={() => handleConnect(connection)}
-                isShared={true}
-                permission={connection.permission}
-              />
-            ))}
+            {connections.map((connection) => {
+              const isOwner = isConnectionOwner(connection);
+              return (
+                <ConnectionCard
+                  key={connection.id}
+                  connection={connection}
+                  onConnect={() => handleConnect(connection)}
+                  onEdit={isOwner ? () => {
+                    setEditingConnection(connection);
+                    setFormOpen(true);
+                  } : undefined}
+                  onDelete={isOwner ? () => {
+                    setConnectionToDelete(connection);
+                    setDeleteDialogOpen(true);
+                  } : undefined}
+                  isShared={true}
+                  isOwner={isOwner}
+                  permission={connection.permission}
+                />
+              );
+            })}
           </div>
         )}
+
+        <ConnectionForm
+          open={formOpen}
+          onOpenChange={(open) => {
+            setFormOpen(open);
+            if (!open) setEditingConnection(null);
+          }}
+          connection={editingConnection || undefined}
+          onSubmit={editingConnection ? handleUpdate : handleCreate}
+        />
+
+        <DeleteConnectionDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          connectionName={connectionToDelete?.name || ''}
+          onConfirm={handleDelete}
+        />
       </div>
     );
   }
