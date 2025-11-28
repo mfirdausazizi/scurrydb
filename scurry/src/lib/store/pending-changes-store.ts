@@ -73,7 +73,7 @@ export const usePendingChangesStore = create<PendingChangesState>()(
       },
     }),
     {
-      name: 'scurry-pending-changes',
+      name: 'scurrydb-pending-changes',
       partialize: (state) => ({ pendingChanges: state.pendingChanges }),
     }
   )

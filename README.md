@@ -1,4 +1,4 @@
-<h1 align="center">🐿️ Scurry</h1>
+<h1 align="center">🐿️ ScurryDB</h1>
 
 <p align="center">
   <strong>A modern, open-source SQL database manager for the web</strong>
@@ -13,24 +13,24 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mfirdausazizi/scurry/blob/main/LICENSE">
+  <a href="https://github.com/mfirdausazizi/scurrydb/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License" />
   </a>
-  <a href="https://github.com/mfirdausazizi/scurry/releases">
-    <img src="https://img.shields.io/github/v/release/mfirdausazizi/scurry?include_prereleases" alt="Release" />
+  <a href="https://github.com/mfirdausazizi/scurrydb/releases">
+    <img src="https://img.shields.io/github/v/release/mfirdausazizi/scurrydb?include_prereleases" alt="Release" />
   </a>
-  <a href="https://github.com/mfirdausazizi/scurry/stargazers">
-    <img src="https://img.shields.io/github/stars/mfirdausazizi/scurry" alt="Stars" />
+  <a href="https://github.com/mfirdausazizi/scurrydb/stargazers">
+    <img src="https://img.shields.io/github/stars/mfirdausazizi/scurrydb" alt="Stars" />
   </a>
 </p>
 
 ---
 
-## Why Scurry?
+## Why ScurryDB?
 
 **phpMyAdmin is showing its age.** Database management shouldn't feel like stepping back to 2005.
 
-Scurry is a fresh take on SQL database management — **modern UI, mobile-friendly, and actually pleasant to use**. Whether you're debugging a production issue from your phone or exploring data on your desktop, Scurry has you covered.
+ScurryDB is a fresh take on SQL database management — **modern UI, mobile-friendly, and actually pleasant to use**. Whether you're debugging a production issue from your phone or exploring data on your desktop, ScurryDB has you covered.
 
 > **"Scurry through your data"** — Fast, friendly, and free.
 
@@ -106,13 +106,13 @@ Scurry is a fresh take on SQL database management — **modern UI, mobile-friend
 ### Using Docker (Recommended)
 
 ```bash
-# Pull and run Scurry
+# Pull and run ScurryDB
 docker run -d \
-  --name scurry \
+  --name scurrydb \
   -p 3000:3000 \
-  -v scurry-data:/app/data \
+  -v scurrydb-data:/app/data \
   -e ENCRYPTION_KEY="your-32-char-secret-key-here!!" \
-  ghcr.io/mfirdausazizi/scurry:latest
+  ghcr.io/mfirdausazizi/scurrydb:latest
 
 # Open in browser
 open http://localhost:3000
@@ -124,18 +124,18 @@ open http://localhost:3000
 # docker-compose.yml
 version: '3.8'
 services:
-  scurry:
-    image: ghcr.io/mfirdausazizi/scurry:latest
+  scurrydb:
+    image: ghcr.io/mfirdausazizi/scurrydb:latest
     ports:
       - "3000:3000"
     volumes:
-      - scurry-data:/app/data
+      - scurrydb-data:/app/data
     environment:
       - ENCRYPTION_KEY=your-32-char-secret-key-here!!
     restart: unless-stopped
 
 volumes:
-  scurry-data:
+  scurrydb-data:
 ```
 
 ```bash
@@ -146,8 +146,8 @@ docker-compose up -d
 
 ```bash
 # Clone the repository
-git clone https://github.com/mfirdausazizi/scurry.git
-cd scurry
+git clone https://github.com/mfirdausazizi/scurrydb.git
+cd scurrydb
 
 # Install dependencies
 npm install
@@ -220,7 +220,7 @@ PORT=3000
 
 ## MCP Server (Claude Desktop Integration)
 
-Scurry includes an MCP (Model Context Protocol) server that allows external AI agents like Claude Desktop to interact with your databases.
+ScurryDB includes an MCP (Model Context Protocol) server that allows external AI agents like Claude Desktop to interact with your databases.
 
 ### Setup for Claude Desktop
 
@@ -229,12 +229,12 @@ Add this to your Claude Desktop configuration (`~/Library/Application Support/Cl
 ```json
 {
   "mcpServers": {
-    "scurry": {
+    "scurrydb": {
       "command": "node",
-      "args": ["/path/to/scurry/dist/mcp-server.cjs"],
+      "args": ["/path/to/scurrydb/dist/mcp-server.cjs"],
       "env": {
         "ENCRYPTION_KEY": "your-32-char-secret-key-here!!",
-        "SCURRY_DATA_DIR": "/path/to/scurry/data"
+        "SCURRYDB_DATA_DIR": "/path/to/scurrydb/data"
       }
     }
   }
@@ -244,7 +244,7 @@ Add this to your Claude Desktop configuration (`~/Library/Application Support/Cl
 ### Build the MCP Server
 
 ```bash
-cd scurry
+cd scurrydb
 npm run mcp:build
 ```
 
@@ -273,8 +273,8 @@ Each database connection is exposed as an MCP resource with its schema informati
 
 ```bash
 # Clone and install
-git clone https://github.com/mfirdausazizi/scurry.git
-cd scurry
+git clone https://github.com/mfirdausazizi/scurrydb.git
+cd scurrydb
 npm install
 
 # Set up environment
@@ -297,7 +297,7 @@ npm run dev
 ### Project Structure
 
 ```
-scurry/
+scurrydb/
 ├── src/
 │   ├── app/                # Next.js App Router pages
 │   ├── components/         # React components
@@ -393,33 +393,33 @@ Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of
 
 ### Good First Issues
 
-Looking to contribute? Check out issues labeled [`good first issue`](https://github.com/mfirdausazizi/scurry/labels/good%20first%20issue) — they're a great way to get started!
+Looking to contribute? Check out issues labeled [`good first issue`](https://github.com/mfirdausazizi/scurrydb/labels/good%20first%20issue) — they're a great way to get started!
 
 ---
 
 ## Support
 
-- **🐛 Bug Reports:** [Open an issue](https://github.com/mfirdausazizi/scurry/issues/new?template=bug_report.md)
-- **💡 Feature Requests:** [Start a discussion](https://github.com/mfirdausazizi/scurry/discussions/new?category=ideas)
-- **❓ Questions:** [Ask in discussions](https://github.com/mfirdausazizi/scurry/discussions/new?category=q-a)
+- **🐛 Bug Reports:** [Open an issue](https://github.com/mfirdausazizi/scurrydb/issues/new?template=bug_report.md)
+- **💡 Feature Requests:** [Start a discussion](https://github.com/mfirdausazizi/scurrydb/discussions/new?category=ideas)
+- **❓ Questions:** [Ask in discussions](https://github.com/mfirdausazizi/scurrydb/discussions/new?category=q-a)
 
 ---
 
 ## Security
 
-Scurry is designed to run on **trusted networks** (localhost, VPN, internal network). If you need to expose it to the internet, we recommend:
+ScurryDB is designed to run on **trusted networks** (localhost, VPN, internal network). If you need to expose it to the internet, we recommend:
 
 1. Running behind a reverse proxy (Caddy, Nginx) with authentication
-2. Using a VPN to access your Scurry instance
+2. Using a VPN to access your ScurryDB instance
 3. Enabling firewall rules to restrict access
 
-Found a security vulnerability? Please email **security@[your-domain].com** instead of opening a public issue.
+Found a security vulnerability? Please email **security@scurrydb.com** instead of opening a public issue.
 
 ---
 
 ## License
 
-Scurry is open-source software licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
+ScurryDB is open-source software licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
 
 This means:
 - ✅ Free to use, modify, and distribute
@@ -442,5 +442,5 @@ This means:
 <p align="center">
   Made with ☕ and 🐿️ energy
   <br />
-  <a href="https://github.com/mfirdausazizi/scurry">Star us on GitHub</a> if you find Scurry useful!
+  <a href="https://github.com/mfirdausazizi/scurrydb">Star us on GitHub</a> if you find ScurryDB useful!
 </p>

@@ -55,7 +55,7 @@ export function AppSidebar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Database className="h-4 w-4" />
           </div>
-          <span className="font-semibold text-lg">Scurry</span>
+          <span className="font-semibold text-lg">ScurryDB</span>
         </div>
         <div className="px-2 pb-2">
           <TeamSwitcher />

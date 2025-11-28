@@ -7,7 +7,7 @@ import type { TeamRole, ConnectionPermission } from '@/lib/validations/team';
 import type { DatabaseConnection, DatabaseType } from '@/types';
 import { decrypt } from '@/lib/utils/encryption';
 
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurry.db');
+const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
 
 let db: Database.Database | null = null;
 

@@ -79,7 +79,7 @@ export function RegisterForm() {
       <div className="text-center">
         <h1 className="text-2xl font-bold">Create your account</h1>
         <p className="text-muted-foreground mt-2">
-          Get started with Scurry for free
+          Get started with ScurryDB for free
         </p>
       </div>
       

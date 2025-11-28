@@ -15,7 +15,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
-          Welcome to Scurry! Manage your database connections and run queries.
+          Welcome to ScurryDB! Manage your database connections and run queries.
         </p>
       </div>
 

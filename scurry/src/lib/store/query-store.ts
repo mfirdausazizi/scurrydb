@@ -39,7 +39,7 @@ export const useQueryStore = create<QueryState>()(
       clearHistory: () => set({ history: [] }),
     }),
     {
-      name: 'scurry-query-history',
+      name: 'scurrydb-query-history',
       partialize: (state) => ({
         history: state.history,
         selectedConnectionId: state.selectedConnectionId,

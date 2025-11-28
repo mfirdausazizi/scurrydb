@@ -28,7 +28,7 @@ function decrypt(encryptedData: string): string {
     const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
-    const key = crypto.scryptSync(ENCRYPTION_KEY, 'scurry-salt', 32);
+    const key = crypto.scryptSync(ENCRYPTION_KEY, 'scurrydb-salt', 32);
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAuthTag(authTag);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
@@ -41,8 +41,8 @@ function decrypt(encryptedData: string): string {
 
 // Get app database path
 function getAppDbPath(): string {
-  const dbDir = process.env.SCURRY_DATA_DIR || path.join(process.cwd(), 'data');
-  return path.join(dbDir, 'scurry.db');
+  const dbDir = process.env.SCURRYDB_DATA_DIR || path.join(process.cwd(), 'data');
+  return path.join(dbDir, 'scurrydb.db');
 }
 
 // Get connections from app database
@@ -276,7 +276,7 @@ async function getSchema(connectionId: string): Promise<string> {
 async function main() {
   const server = new Server(
     {
-      name: 'scurry-mcp-server',
+      name: 'scurrydb-mcp-server',
       version: '1.0.0',
     },
     {
@@ -293,7 +293,7 @@ async function main() {
       tools: [
         {
           name: 'list_connections',
-          description: 'List all available database connections in Scurry',
+          description: 'List all available database connections in ScurryDB',
           inputSchema: {
             type: 'object',
             properties: {},
@@ -407,7 +407,7 @@ async function main() {
     const connections = getConnections();
     return {
       resources: connections.map((c) => ({
-        uri: `scurry://connection/${c.id}`,
+        uri: `scurrydb://connection/${c.id}`,
         name: c.name,
         description: `${c.type} database: ${c.database}`,
         mimeType: 'application/json',
@@ -418,7 +418,7 @@ async function main() {
   // Read resource
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri;
-    const match = uri.match(/^scurry:\/\/connection\/(.+)$/);
+    const match = uri.match(/^scurrydb:\/\/connection\/(.+)$/);
     if (!match) {
       throw new Error(`Invalid resource URI: ${uri}`);
     }
@@ -441,7 +441,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error('Scurry MCP Server started');
+  console.error('ScurryDB MCP Server started');
 }
 
 main().catch((error) => {

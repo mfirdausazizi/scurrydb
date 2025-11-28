@@ -13,7 +13,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Scurry - Modern SQL Database Manager',
+  title: 'ScurryDB - Modern SQL Database Manager',
   description: 'A modern, open-source, web-based SQL database manager',
 };
 

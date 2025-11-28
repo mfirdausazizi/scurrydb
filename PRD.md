@@ -1,5 +1,5 @@
 # Product Requirements Document (PRD)
-# 🐿️ Scurry — Modern Web-Based SQL Database Manager
+# 🐿️ ScurryDB — Modern Web-Based SQL Database Manager
 
 **Version:** 1.7  
 **Date:** November 2025  
@@ -13,7 +13,7 @@
 
 ## 1. Executive Summary
 
-Scurry is a modern, open-source, web-based SQL database management platform designed to replace legacy tools like phpMyAdmin with a secure, user-friendly, and mobile-responsive solution. Built as a hobby project and released under the AGPL-3.0 license, Scurry enables developers and database administrators to manage MySQL, PostgreSQL, MariaDB, and SQLite databases through an intuitive interface.
+ScurryDB is a modern, open-source, web-based SQL database management platform designed to replace legacy tools like phpMyAdmin with a secure, user-friendly, and mobile-responsive solution. Built as a hobby project and released under the AGPL-3.0 license, ScurryDB enables developers and database administrators to manage MySQL, PostgreSQL, MariaDB, and SQLite databases through an intuitive interface.
 
 ### 1.1 Vision Statement
 
@@ -29,17 +29,18 @@ To create a free, open-source alternative to legacy database management tools th
 - **AI-Powered Queries:** Natural language to SQL with configurable AI models (OpenAI, Anthropic, Ollama)
 - **MCP Integration:** Model Context Protocol server for external AI agent access to your databases
 
-### 1.3 Why "Scurry"?
+### 1.3 Why "ScurryDB"?
 
 - **Action-Oriented:** Implies speed, agility, and quick movement through your data
 - **Squirrel Energy:** What squirrels do — keeps the playful, industrious vibe
 - **Memorable:** Short, punchy, easy to spell and remember
 - **Unique:** No conflicts in the database tool space
 - **Verb Power:** "Scurry through your data" — natural product language
+- **DB Suffix:** Clearly identifies it as a database management tool
 
 ### 1.4 Project Philosophy
 
-As a hobby project, Scurry prioritizes:
+As a hobby project, ScurryDB prioritizes:
 - **Fun over perfection:** Ship early, iterate often, enjoy the process
 - **Learning:** Explore new technologies and patterns
 - **Community:** Welcome contributions, be inclusive
@@ -69,6 +70,8 @@ This project is built using **Factory Droid** — an AI-powered software develop
 - ✅ Can be self-hosted by anyone
 - ⚠️ Modifications must be shared under AGPL-3.0
 - ⚠️ Network use counts as distribution (SaaS providers must open-source)
+
+**Domain:** scurrydb.com
 
 ---
 
@@ -1125,12 +1128,12 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 
 ## 14. Open Questions
 
-1. **Database Priority:** Start with MySQL or PostgreSQL for MVP?
-2. **Domain:** scurry.dev, scurrydb.com, getscurry.dev, or other?
-3. **Monorepo:** Use Turborepo for packages or keep it simple?
-4. **State Management:** Zustand vs. Jotai vs. just React Context?
-5. **ORM for App Data:** Drizzle vs. Prisma for storing connections/settings?
-6. **Authentication:** Add user auth in v1, or keep it single-user initially?
+1. **Database Priority:** Start with MySQL or PostgreSQL for MVP? ✅ Resolved: All four supported
+2. **Domain:** scurry.dev, scurrydb.com, getscurry.dev, or other? ✅ Resolved: scurrydb.com
+3. **Monorepo:** Use Turborepo for packages or keep it simple? ✅ Resolved: Keep simple
+4. **State Management:** Zustand vs. Jotai vs. just React Context? ✅ Resolved: Zustand
+5. **ORM for App Data:** Drizzle vs. Prisma for storing connections/settings? ✅ Resolved: Better-sqlite3 directly
+6. **Authentication:** Add user auth in v1, or keep it single-user initially? ✅ Resolved: Multi-user with Argon2id
 7. **i18n:** Plan for internationalization from the start?
 8. **Analytics:** Include privacy-respecting analytics (Plausible/Umami)?
 
@@ -1140,15 +1143,10 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 
 ### 14.1 Competitive Analysis
 
-| Feature | phpMyAdmin | Adminer | DBeaver | TablePlus | **Scurry** |
-|---------|------------|---------|---------|-----------|------------|
+| Feature | phpMyAdmin | Adminer | DBeaver | TablePlus | **ScurryDB** |
+|---------|------------|---------|---------|-----------|--------------|
 | Modern UI | ❌ | ❌ | ⚠️ | ✅ | ✅ |
 | Mobile Support | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Web-Based | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Team Features | ❌ | ❌ | ❌ | ⚠️ | ✅ |
-| SSO/Enterprise | ❌ | ❌ | ⚠️ | ❌ | ✅ |
-| AI Features | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Free Option | ✅ | ✅ | ✅ | ❌ | ✅ | | ❌ | ❌ | ❌ | ✅ |
 | Web-Based | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Team Features | ❌ | ❌ | ❌ | ⚠️ | ✅ |
 | SSO/Enterprise | ❌ | ❌ | ⚠️ | ❌ | ✅ |
@@ -1172,6 +1170,7 @@ Refer to Section 2.9 for accessibility design guidelines. Additional requirement
 - [DBeaver](https://dbeaver.io/)
 - [TablePlus](https://tableplus.com/)
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/)
+- [ScurryDB Website](https://scurrydb.com)
 
 ---
 

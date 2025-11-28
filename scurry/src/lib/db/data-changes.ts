@@ -11,7 +11,7 @@ import type {
 import { executeQuery } from './query-executor';
 import type { DatabaseConnection } from '@/types';
 
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurry.db');
+const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
 
 let db: Database.Database | null = null;
 

@@ -205,7 +205,7 @@ export function TeamSwitcher({ className }: TeamSwitcherProps) {
               <div className="grid gap-2">
                 <Label htmlFor="slug">Team URL</Label>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">scurry.app/teams/</span>
+                  <span className="text-sm text-muted-foreground">scurrydb.com/teams/</span>
                   <Input
                     id="slug"
                     placeholder="my-team"

@@ -143,7 +143,7 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
           <DialogDescription>
             {connection?.id
               ? 'Update your database connection settings.'
-              : 'Add a new database connection to Scurry.'}
+              : 'Add a new database connection to ScurryDB.'}
           </DialogDescription>
         </DialogHeader>
 

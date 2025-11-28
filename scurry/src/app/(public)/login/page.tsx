@@ -17,7 +17,7 @@ export default async function LoginPage() {
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <span className="text-2xl">🐿️</span>
-            <span className="font-bold text-xl">Scurry</span>
+            <span className="font-bold text-xl">ScurryDB</span>
           </Link>
           <ThemeToggle />
         </div>

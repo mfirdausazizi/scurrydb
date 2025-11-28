@@ -9,7 +9,7 @@ function getEncryptionKey(): string {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
     console.warn('ENCRYPTION_KEY not set, using default (not secure for production)');
-    return 'scurry-default-key-change-in-prod';
+    return 'scurrydb-default-key-change-in-prod';
   }
   return key;
 }

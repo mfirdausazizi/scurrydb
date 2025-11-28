@@ -56,7 +56,7 @@ export const useConnectionStore = create<ConnectionState>()(
       },
     }),
     {
-      name: 'scurry-connections',
+      name: 'scurrydb-connections',
       partialize: (state) => ({
         connections: state.connections,
         sidebarOpen: state.sidebarOpen,

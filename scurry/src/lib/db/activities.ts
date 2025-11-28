@@ -4,7 +4,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { getUserTeams } from './teams';
 
-const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurry.db');
+const DB_PATH = process.env.APP_DB_PATH || path.join(process.cwd(), 'data', 'scurrydb.db');
 
 let db: Database.Database | null = null;
 

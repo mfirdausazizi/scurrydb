@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { v4 as uuidv4 } from 'uuid';
 import { createSession, getValidSession, deleteSession, getUserById, type User, type Session } from '@/lib/db/app-db';
 
-const SESSION_COOKIE_NAME = 'scurry_session';
+const SESSION_COOKIE_NAME = 'scurrydb_session';
 const SESSION_DURATION_DAYS = 30;
 
 export async function createUserSession(userId: string): Promise<Session> {
