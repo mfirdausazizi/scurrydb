@@ -144,7 +144,7 @@ export default function QueryPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
+    <div className="h-[calc(100vh-8rem)] flex flex-col min-w-0 overflow-hidden">
       <div className="mb-4">
         <h1 className="text-3xl font-bold tracking-tight">Query Editor</h1>
         <p className="text-muted-foreground">
@@ -152,8 +152,8 @@ export default function QueryPage() {
         </p>
       </div>
 
-      <div className="flex-1 flex overflow-hidden rounded-lg border bg-card">
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex min-h-0 overflow-hidden rounded-lg border bg-card">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <QueryToolbar
             connections={connections}
             selectedConnectionId={selectedConnectionId}
@@ -169,8 +169,8 @@ export default function QueryPage() {
             showAI={showAI}
           />
 
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="h-[300px]">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="h-[300px] flex-shrink-0">
               <SqlEditor
                 value={currentQuery}
                 onChange={setCurrentQuery}
@@ -178,7 +178,7 @@ export default function QueryPage() {
               />
             </div>
 
-            <div className="flex-1 overflow-auto p-4 border-t">
+            <div className="flex-1 overflow-auto p-4 border-t min-h-0">
               {result ? (
                 result.error ? (
                   <Card className="border-destructive">
@@ -211,18 +211,20 @@ export default function QueryPage() {
         </div>
 
         {showHistory && (
-          <QueryHistory
-            history={history}
-            onSelect={(sql) => {
-              setCurrentQuery(sql);
-              setShowHistory(false);
-            }}
-            onClose={() => setShowHistory(false)}
-          />
+          <div className="w-[300px] border-l flex-shrink-0 overflow-hidden">
+            <QueryHistory
+              history={history}
+              onSelect={(sql) => {
+                setCurrentQuery(sql);
+                setShowHistory(false);
+              }}
+              onClose={() => setShowHistory(false)}
+            />
+          </div>
         )}
 
         {showAI && (
-          <div className="w-[400px] border-l flex flex-col">
+          <div className="w-[350px] border-l flex-shrink-0 flex flex-col overflow-hidden">
             <ChatPanel
               connectionId={selectedConnectionId || undefined}
               onInsertSQL={(sql) => {

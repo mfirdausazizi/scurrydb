@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { Database, Plus, FileCode, Search, Activity } from 'lucide-react';
+import { Database, Plus, FileCode, Search, Activity, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useConnectionStore } from '@/lib/store';
+import { useConnections } from '@/hooks';
 import { ActivityFeed } from '@/components/activities';
 
 export default function DashboardPage() {
-  const { connections } = useConnectionStore();
+  const { connections, loading } = useConnections();
 
   return (
     <div className="space-y-6">
@@ -26,7 +26,9 @@ export default function DashboardPage() {
             <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{connections.length}</div>
+            <div className="text-2xl font-bold">
+              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : connections.length}
+            </div>
             <p className="text-xs text-muted-foreground">
               Database connections configured
             </p>
@@ -69,7 +71,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {connections.length === 0 && (
+      {!loading && connections.length === 0 && (
         <Card className="border-dashed">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">

@@ -5,12 +5,12 @@ import {
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
-  getPaginationRowModel,
   useReactTable,
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { ArrowUpDown, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { ArrowUpDown, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -20,6 +20,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { QueryResult } from '@/types';
 
@@ -27,9 +33,16 @@ interface ResultsTableProps {
   result: QueryResult;
 }
 
-export function ResultsTable({ result }: ResultsTableProps) {
+export const ResultsTable = React.memo(function ResultsTable({ result }: ResultsTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [copiedCell, setCopiedCell] = React.useState<string | null>(null);
+  const tableContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const handleCopy = React.useCallback(async (value: string, cellId: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopiedCell(cellId);
+    setTimeout(() => setCopiedCell(null), 2000);
+  }, []);
 
   const columns: ColumnDef<Record<string, unknown>>[] = React.useMemo(() => {
     return result.columns.map((col) => ({
@@ -41,35 +54,51 @@ export function ResultsTable({ result }: ResultsTableProps) {
           className="-ml-3 h-8"
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
         >
-          {col.name}
-          <ArrowUpDown className="ml-2 h-3 w-3" />
+          <span className="truncate max-w-[150px]">{col.name}</span>
+          <ArrowUpDown className="ml-2 h-3 w-3 flex-shrink-0" />
         </Button>
       ),
-      cell: ({ getValue }) => {
+      cell: ({ getValue, row, column }) => {
         const value = getValue();
-        return <CellValue value={value} columnName={col.name} onCopy={handleCopy} copiedCell={copiedCell} />;
+        const cellId = `${row.index}-${column.id}`;
+        return (
+          <CellValue
+            value={value}
+            cellId={cellId}
+            onCopy={handleCopy}
+            isCopied={copiedCell === cellId}
+          />
+        );
       },
     }));
-  }, [result.columns, copiedCell]);
+  }, [result.columns, copiedCell, handleCopy]);
 
   const table = useReactTable({
     data: result.rows,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
     state: { sorting },
-    initialState: {
-      pagination: { pageSize: 100 },
-    },
   });
 
-  const handleCopy = async (value: string, cellId: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopiedCell(cellId);
-    setTimeout(() => setCopiedCell(null), 2000);
-  };
+  const { rows } = table.getRowModel();
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    estimateSize: () => 40,
+    getScrollElement: () => tableContainerRef.current,
+    overscan: 10,
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
+      : 0;
 
   if (result.rows.length === 0) {
     return (
@@ -80,8 +109,11 @@ export function ResultsTable({ result }: ResultsTableProps) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="rounded-md border overflow-auto max-h-[500px]">
+    <div className="space-y-2 min-w-0">
+      <div
+        ref={tableContainerRef}
+        className="rounded-md border overflow-auto max-h-[500px]"
+      >
         <Table>
           <TableHeader className="sticky top-0 bg-background z-10">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -97,95 +129,66 @@ export function ResultsTable({ result }: ResultsTableProps) {
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="font-mono text-sm">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
+            {paddingTop > 0 && (
+              <tr>
+                <td style={{ height: `${paddingTop}px` }} colSpan={columns.length} />
+              </tr>
+            )}
+            {virtualRows.map((virtualRow) => {
+              const row = rows[virtualRow.index];
+              return (
+                <TableRow key={row.id} data-index={virtualRow.index}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="font-mono text-sm">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
+            {paddingBottom > 0 && (
+              <tr>
+                <td style={{ height: `${paddingBottom}px` }} colSpan={columns.length} />
+              </tr>
+            )}
           </TableBody>
         </Table>
       </div>
 
       <div className="flex items-center justify-between px-2">
         <div className="text-sm text-muted-foreground">
-          Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
-          {Math.min(
-            (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-            result.rowCount
-          )}{' '}
-          of {result.rowCount} rows
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          Showing {result.rows.length} of {result.rowCount} rows
         </div>
       </div>
     </div>
   );
-}
+});
 
 interface CellValueProps {
   value: unknown;
-  columnName: string;
+  cellId: string;
   onCopy: (value: string, cellId: string) => void;
-  copiedCell: string | null;
+  isCopied: boolean;
 }
 
-function CellValue({ value, columnName, onCopy, copiedCell }: CellValueProps) {
-  const cellId = `${columnName}-${String(value)}`;
-  const isCopied = copiedCell === cellId;
-
+const CellValue = React.memo(function CellValue({
+  value,
+  cellId,
+  onCopy,
+  isCopied,
+}: CellValueProps) {
   if (value === null) {
     return <span className="italic text-muted-foreground">NULL</span>;
   }
 
-  if (typeof value === 'object') {
-    const jsonStr = JSON.stringify(value, null, 2);
-    return (
-      <div className="group relative max-w-[300px]">
-        <pre className="text-xs overflow-hidden text-ellipsis whitespace-nowrap">
-          {JSON.stringify(value)}
-        </pre>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-0 top-0 h-6 w-6 opacity-0 group-hover:opacity-100"
-          onClick={() => onCopy(jsonStr, cellId)}
-        >
-          {isCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </Button>
-      </div>
-    );
-  }
+  const strValue = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+  const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const isLong = displayValue.length > 50;
 
-  const strValue = String(value);
-  const isLong = strValue.length > 50;
-
-  return (
-    <div className={cn('group relative', isLong && 'max-w-[300px]')}>
-      <span className={cn(isLong && 'block overflow-hidden text-ellipsis whitespace-nowrap')}>
-        {strValue}
+  const content = (
+    <div className={cn('group relative max-w-[250px]')}>
+      <span className="block truncate">
+        {displayValue}
       </span>
       <Button
         variant="ghost"
@@ -197,4 +200,21 @@ function CellValue({ value, columnName, onCopy, copiedCell }: CellValueProps) {
       </Button>
     </div>
   );
-}
+
+  if (isLong) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {content}
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-[400px] break-all">
+            <p className="font-mono text-xs whitespace-pre-wrap">{strValue}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return content;
+});

@@ -225,6 +225,26 @@ function initializeSchema(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_activities_team_id ON activities(team_id);
     CREATE INDEX IF NOT EXISTS idx_activities_user_id ON activities(user_id);
     CREATE INDEX IF NOT EXISTS idx_activities_created_at ON activities(created_at);
+    
+    -- Data Change Logs for tracking edits
+    CREATE TABLE IF NOT EXISTS data_change_logs (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      row_identifier TEXT,
+      old_values TEXT,
+      new_values TEXT,
+      user_id TEXT NOT NULL,
+      applied_at TEXT NOT NULL,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_data_change_logs_connection_id ON data_change_logs(connection_id);
+    CREATE INDEX IF NOT EXISTS idx_data_change_logs_table_name ON data_change_logs(table_name);
+    CREATE INDEX IF NOT EXISTS idx_data_change_logs_user_id ON data_change_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_data_change_logs_applied_at ON data_change_logs(applied_at);
   `);
 }
 

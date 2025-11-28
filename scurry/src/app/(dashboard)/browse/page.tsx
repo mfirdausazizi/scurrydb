@@ -2,9 +2,10 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Database, Loader2 } from 'lucide-react';
+import { Database, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { SchemaTree, TableStructure } from '@/components/schema';
 import { useConnections } from '@/hooks';
+import { usePendingChangesStore } from '@/lib/store/pending-changes-store';
 import type { TableInfo, ColumnDefinition, IndexInfo, QueryResult } from '@/types';
 
 function BrowsePageContent() {
@@ -31,6 +33,19 @@ function BrowsePageContent() {
   const [structureLoading, setStructureLoading] = React.useState(false);
   const [preview, setPreview] = React.useState<QueryResult | null>(null);
   const [previewLoading, setPreviewLoading] = React.useState(false);
+
+  // Select all pending changes and compute total
+  const allPendingChanges = usePendingChangesStore((state) => state.pendingChanges);
+  const totalPendingChanges = React.useMemo(() => {
+    return Object.values(allPendingChanges).reduce((total, tableChanges) => {
+      return (
+        total +
+        tableChanges.changes.updates.length +
+        tableChanges.changes.inserts.length +
+        tableChanges.changes.deletes.length
+      );
+    }, 0);
+  }, [allPendingChanges]);
 
   const fetchTables = React.useCallback(async () => {
     if (!selectedConnectionId) return;
@@ -144,16 +159,24 @@ function BrowsePageContent() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Schema Browser</h1>
+    <div className="h-[calc(100vh-8rem)] flex flex-col min-w-0 overflow-hidden">
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">Schema Browser</h1>
+            {totalPendingChanges > 0 && (
+              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {totalPendingChanges} pending
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">
             Explore your database schema and data.
           </p>
         </div>
         <Select value={selectedConnectionId || ''} onValueChange={setSelectedConnectionId}>
-          <SelectTrigger className="w-[250px]">
+          <SelectTrigger className="w-[250px] flex-shrink-0">
             <SelectValue placeholder="Select connection" />
           </SelectTrigger>
           <SelectContent>
@@ -161,10 +184,10 @@ function BrowsePageContent() {
               <SelectItem key={conn.id} value={conn.id}>
                 <div className="flex items-center gap-2">
                   <div
-                    className="h-2 w-2 rounded-full"
+                    className="h-2 w-2 rounded-full flex-shrink-0"
                     style={{ backgroundColor: conn.color || '#8B5A2B' }}
                   />
-                  {conn.name}
+                  <span className="truncate">{conn.name}</span>
                 </div>
               </SelectItem>
             ))}
@@ -172,8 +195,8 @@ function BrowsePageContent() {
         </Select>
       </div>
 
-      <div className="flex-1 flex overflow-hidden rounded-lg border bg-card">
-        <div className="w-64 border-r">
+      <div className="flex-1 flex min-h-0 overflow-hidden rounded-lg border bg-card">
+        <div className="w-64 border-r flex-shrink-0 overflow-hidden">
           <SchemaTree
             tables={tables}
             loading={tablesLoading}
@@ -183,7 +206,7 @@ function BrowsePageContent() {
           />
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-4 min-w-0">
           {selectedTable ? (
             <TableStructure
               tableName={selectedTable}
@@ -192,7 +215,9 @@ function BrowsePageContent() {
               preview={preview}
               loading={structureLoading}
               previewLoading={previewLoading}
+              connectionId={selectedConnectionId}
               onLoadPreview={fetchPreview}
+              onRefreshPreview={fetchPreview}
             />
           ) : (
             <div className="flex items-center justify-center h-full">

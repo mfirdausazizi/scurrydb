@@ -31,7 +31,10 @@ export type ActivityAction =
   | 'member_joined'
   | 'member_invited'
   | 'member_removed'
-  | 'team_created';
+  | 'team_created'
+  | 'data_inserted'
+  | 'data_updated'
+  | 'data_deleted';
 
 export type ResourceType = 'query' | 'connection' | 'team' | 'member' | 'comment';
 
@@ -233,6 +236,12 @@ export function getActivityDescription(activity: Activity): string {
       return `${userName} removed ${metadata.memberName || metadata.memberEmail || 'a member'} from the team`;
     case 'team_created':
       return `${userName} created the team "${metadata.teamName || 'Untitled'}"`;
+    case 'data_inserted':
+      return `${userName} inserted ${metadata.rowCount || 1} row(s) into "${metadata.tableName || 'a table'}"`;
+    case 'data_updated':
+      return `${userName} updated ${metadata.rowCount || 1} row(s) in "${metadata.tableName || 'a table'}"`;
+    case 'data_deleted':
+      return `${userName} deleted ${metadata.rowCount || 1} row(s) from "${metadata.tableName || 'a table'}"`;
     default:
       return `${userName} performed an action`;
   }
