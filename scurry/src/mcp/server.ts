@@ -20,7 +20,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Simple decryption for passwords (must match encryption.ts)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-key-for-development!';
+function getEncryptionKey(): string {
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error(
+      'ENCRYPTION_KEY environment variable is required for MCP server.\n' +
+      'Set it in your Claude Desktop config or shell environment.\n' +
+      'Generate a secure key with: openssl rand -hex 16'
+    );
+  }
+  if (key.length < 16) {
+    throw new Error('ENCRYPTION_KEY must be at least 16 characters long.');
+  }
+  return key;
+}
+
+const ENCRYPTION_KEY = getEncryptionKey();
 
 function decrypt(encryptedData: string): string {
   try {

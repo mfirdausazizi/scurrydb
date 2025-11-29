@@ -64,3 +64,46 @@ next-env.d.ts
 # OS files
 .DS_Store
 Thumbs.db
+
+# Additional environment file patterns
+.env.*
+!.env.example
+.env*.local
+.env*.production
+.env*.development
+
+# Temporary and backup files
+*.bak
+*.tmp
+*~
+tmp/
+temp/
+.cache/
+
+# Additional certificate files
+*.csr
+*.crt
+*.cer
+*.p12
+*.jks
+*.key
+id_rsa*
+*.pub
+
+# Cloud credentials (should never be committed)
+.aws/
+.aws-credentials
+.gcloud/
+service-account*.json
+credentials.json
+*-credentials.json
+
+# Secret/sensitive files
+*.secret
+*.secrets
+secrets/
+.secrets/
+
+# Editor-specific sensitive settings
+.vscode/settings.json
+.vscode/launch.json

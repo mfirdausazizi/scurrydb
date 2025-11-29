@@ -8,8 +8,17 @@ const KEY_LENGTH = 32;
 function getEncryptionKey(): string {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
-    console.warn('ENCRYPTION_KEY not set, using default (not secure for production)');
-    return 'scurrydb-default-key-change-in-prod';
+    throw new Error(
+      'ENCRYPTION_KEY environment variable is required.\n' +
+      'Generate a secure key with: openssl rand -hex 16\n' +
+      'The key must be at least 16 characters long.'
+    );
+  }
+  if (key.length < 16) {
+    throw new Error(
+      'ENCRYPTION_KEY must be at least 16 characters long.\n' +
+      'Generate a secure key with: openssl rand -hex 16'
+    );
   }
   return key;
 }
