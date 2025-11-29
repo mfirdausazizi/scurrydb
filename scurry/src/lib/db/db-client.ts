@@ -131,9 +131,27 @@ function initializeSqliteSchema(database: Database.Database) {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
-    
+
+    CREATE TABLE IF NOT EXISTS team_ai_settings (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_ai_settings_team_id ON team_ai_settings(team_id);
+
     CREATE TABLE IF NOT EXISTS ai_conversations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -146,7 +164,8 @@ function initializeSqliteSchema(database: Database.Database) {
     );
     
     CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
-    
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_conversations_user_connection ON ai_conversations(user_id, connection_id);
+
     CREATE TABLE IF NOT EXISTS ai_messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
@@ -156,9 +175,21 @@ function initializeSqliteSchema(database: Database.Database) {
       created_at TEXT NOT NULL,
       FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id);
-    
+
+    CREATE TABLE IF NOT EXISTS schema_cache (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL UNIQUE,
+      schema_json TEXT NOT NULL,
+      cached_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_schema_cache_connection_id ON schema_cache(connection_id);
+    CREATE INDEX IF NOT EXISTS idx_schema_cache_expires_at ON schema_cache(expires_at);
+
     CREATE TABLE IF NOT EXISTS teams (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -431,6 +462,22 @@ function getSqliteSchemaStatements(): string[] {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
     `CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id)`,
+    `CREATE TABLE IF NOT EXISTS team_ai_settings (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_team_ai_settings_team_id ON team_ai_settings(team_id)`,
     `CREATE TABLE IF NOT EXISTS ai_conversations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -442,6 +489,7 @@ function getSqliteSchemaStatements(): string[] {
       FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE SET NULL
     )`,
     `CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_conversations_user_connection ON ai_conversations(user_id, connection_id)`,
     `CREATE TABLE IF NOT EXISTS ai_messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
@@ -452,6 +500,16 @@ function getSqliteSchemaStatements(): string[] {
       FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
     )`,
     `CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id)`,
+    `CREATE TABLE IF NOT EXISTS schema_cache (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL UNIQUE,
+      schema_json TEXT NOT NULL,
+      cached_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_schema_cache_connection_id ON schema_cache(connection_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_schema_cache_expires_at ON schema_cache(expires_at)`,
     `CREATE TABLE IF NOT EXISTS teams (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -673,7 +731,23 @@ function getPostgresSchema(): string {
     );
     
     CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
-    
+
+    CREATE TABLE IF NOT EXISTS team_ai_settings (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL UNIQUE REFERENCES teams(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_by TEXT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_ai_settings_team_id ON team_ai_settings(team_id);
+
     CREATE TABLE IF NOT EXISTS ai_conversations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -682,9 +756,10 @@ function getPostgresSchema(): string {
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
-    
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_conversations_user_connection ON ai_conversations(user_id, connection_id);
+
     CREATE TABLE IF NOT EXISTS ai_messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
@@ -693,9 +768,20 @@ function getPostgresSchema(): string {
       sql_query TEXT,
       created_at TIMESTAMPTZ NOT NULL
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_id ON ai_messages(conversation_id);
-    
+
+    CREATE TABLE IF NOT EXISTS schema_cache (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL UNIQUE REFERENCES connections(id) ON DELETE CASCADE,
+      schema_json JSONB NOT NULL,
+      cached_at TIMESTAMPTZ NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_schema_cache_connection_id ON schema_cache(connection_id);
+    CREATE INDEX IF NOT EXISTS idx_schema_cache_expires_at ON schema_cache(expires_at);
+
     CREATE TABLE IF NOT EXISTS teams (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

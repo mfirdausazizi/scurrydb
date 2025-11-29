@@ -51,6 +51,51 @@ export async function fetchIndexes(
   }
 }
 
+export interface ForeignKeyInfo {
+  constraintName: string;
+  columnName: string;
+  referencedTable: string;
+  referencedColumn: string;
+}
+
+export async function fetchForeignKeys(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<ForeignKeyInfo[]> {
+  switch (connection.type) {
+    case 'mysql':
+    case 'mariadb':
+      return fetchMySqlForeignKeys(connection, tableName);
+    case 'postgresql':
+      return fetchPostgresForeignKeys(connection, tableName);
+    case 'sqlite':
+      return fetchSqliteForeignKeys(connection, tableName);
+    default:
+      throw new Error(`Unsupported database type: ${connection.type}`);
+  }
+}
+
+export interface TableRelationship {
+  fromTable: string;
+  fromColumn: string;
+  toTable: string;
+  toColumn: string;
+}
+
+export async function fetchAllRelationships(connection: DatabaseConnection): Promise<TableRelationship[]> {
+  switch (connection.type) {
+    case 'mysql':
+    case 'mariadb':
+      return fetchMySqlAllRelationships(connection);
+    case 'postgresql':
+      return fetchPostgresAllRelationships(connection);
+    case 'sqlite':
+      return fetchSqliteAllRelationships(connection);
+    default:
+      throw new Error(`Unsupported database type: ${connection.type}`);
+  }
+}
+
 async function fetchMySqlTables(connection: DatabaseConnection): Promise<TableInfo[]> {
   const conn = await mysql.createConnection({
     host: connection.host,
@@ -377,7 +422,7 @@ function fetchSqliteColumns(connection: DatabaseConnection, tableName: string): 
 
 function fetchSqliteIndexes(connection: DatabaseConnection, tableName: string): IndexInfo[] {
   const db = new Database(connection.database);
-  
+
   try {
     const indexes = db.prepare(`PRAGMA index_list("${tableName}")`).all() as Array<{
       seq: number;
@@ -386,14 +431,14 @@ function fetchSqliteIndexes(connection: DatabaseConnection, tableName: string): 
       origin: string;
       partial: number;
     }>;
-    
+
     return indexes.map((idx) => {
       const indexInfo = db.prepare(`PRAGMA index_info("${idx.name}")`).all() as Array<{
         seqno: number;
         cid: number;
         name: string;
       }>;
-      
+
       return {
         name: idx.name,
         columns: indexInfo.map((col) => col.name),
@@ -401,6 +446,237 @@ function fetchSqliteIndexes(connection: DatabaseConnection, tableName: string): 
         primary: idx.origin === 'pk',
       };
     });
+  } finally {
+    db.close();
+  }
+}
+
+// Foreign Key fetching functions
+async function fetchMySqlForeignKeys(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<ForeignKeyInfo[]> {
+  const conn = await mysql.createConnection({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? {} : undefined,
+  });
+
+  try {
+    const [rows] = await conn.execute(`
+      SELECT
+        CONSTRAINT_NAME as constraint_name,
+        COLUMN_NAME as column_name,
+        REFERENCED_TABLE_NAME as referenced_table,
+        REFERENCED_COLUMN_NAME as referenced_column
+      FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
+      ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
+    `, [connection.database, tableName]);
+
+    return (rows as Array<{
+      constraint_name: string;
+      column_name: string;
+      referenced_table: string;
+      referenced_column: string;
+    }>).map((row) => ({
+      constraintName: row.constraint_name,
+      columnName: row.column_name,
+      referencedTable: row.referenced_table,
+      referencedColumn: row.referenced_column,
+    }));
+  } finally {
+    await conn.end();
+  }
+}
+
+async function fetchPostgresForeignKeys(
+  connection: DatabaseConnection,
+  tableName: string
+): Promise<ForeignKeyInfo[]> {
+  const client = new Client({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+
+  await client.connect();
+
+  try {
+    const result = await client.query(`
+      SELECT
+        tc.constraint_name,
+        kcu.column_name,
+        ccu.table_name AS referenced_table,
+        ccu.column_name AS referenced_column
+      FROM information_schema.table_constraints AS tc
+      JOIN information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      JOIN information_schema.constraint_column_usage AS ccu
+        ON ccu.constraint_name = tc.constraint_name
+        AND ccu.table_schema = tc.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public'
+        AND tc.table_name = $1
+    `, [tableName]);
+
+    return result.rows.map((row) => ({
+      constraintName: row.constraint_name,
+      columnName: row.column_name,
+      referencedTable: row.referenced_table,
+      referencedColumn: row.referenced_column,
+    }));
+  } finally {
+    await client.end();
+  }
+}
+
+function fetchSqliteForeignKeys(
+  connection: DatabaseConnection,
+  tableName: string
+): ForeignKeyInfo[] {
+  const db = new Database(connection.database);
+
+  try {
+    const foreignKeys = db.prepare(`PRAGMA foreign_key_list("${tableName}")`).all() as Array<{
+      id: number;
+      seq: number;
+      table: string;
+      from: string;
+      to: string;
+    }>;
+
+    return foreignKeys.map((fk) => ({
+      constraintName: `fk_${tableName}_${fk.from}`,
+      columnName: fk.from,
+      referencedTable: fk.table,
+      referencedColumn: fk.to,
+    }));
+  } finally {
+    db.close();
+  }
+}
+
+// Fetch all relationships in the database
+async function fetchMySqlAllRelationships(connection: DatabaseConnection): Promise<TableRelationship[]> {
+  const conn = await mysql.createConnection({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? {} : undefined,
+  });
+
+  try {
+    const [rows] = await conn.execute(`
+      SELECT
+        TABLE_NAME as from_table,
+        COLUMN_NAME as from_column,
+        REFERENCED_TABLE_NAME as to_table,
+        REFERENCED_COLUMN_NAME as to_column
+      FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL
+      ORDER BY TABLE_NAME, COLUMN_NAME
+    `, [connection.database]);
+
+    return (rows as Array<{
+      from_table: string;
+      from_column: string;
+      to_table: string;
+      to_column: string;
+    }>).map((row) => ({
+      fromTable: row.from_table,
+      fromColumn: row.from_column,
+      toTable: row.to_table,
+      toColumn: row.to_column,
+    }));
+  } finally {
+    await conn.end();
+  }
+}
+
+async function fetchPostgresAllRelationships(connection: DatabaseConnection): Promise<TableRelationship[]> {
+  const client = new Client({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+
+  await client.connect();
+
+  try {
+    const result = await client.query(`
+      SELECT
+        tc.table_name AS from_table,
+        kcu.column_name AS from_column,
+        ccu.table_name AS to_table,
+        ccu.column_name AS to_column
+      FROM information_schema.table_constraints AS tc
+      JOIN information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      JOIN information_schema.constraint_column_usage AS ccu
+        ON ccu.constraint_name = tc.constraint_name
+        AND ccu.table_schema = tc.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public'
+      ORDER BY tc.table_name, kcu.column_name
+    `);
+
+    return result.rows.map((row) => ({
+      fromTable: row.from_table,
+      fromColumn: row.from_column,
+      toTable: row.to_table,
+      toColumn: row.to_column,
+    }));
+  } finally {
+    await client.end();
+  }
+}
+
+function fetchSqliteAllRelationships(connection: DatabaseConnection): TableRelationship[] {
+  const db = new Database(connection.database);
+
+  try {
+    // Get all tables
+    const tables = db.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    `).all() as Array<{ name: string }>;
+
+    const relationships: TableRelationship[] = [];
+
+    for (const table of tables) {
+      const foreignKeys = db.prepare(`PRAGMA foreign_key_list("${table.name}")`).all() as Array<{
+        id: number;
+        seq: number;
+        table: string;
+        from: string;
+        to: string;
+      }>;
+
+      for (const fk of foreignKeys) {
+        relationships.push({
+          fromTable: table.name,
+          fromColumn: fk.from,
+          toTable: fk.table,
+          toColumn: fk.to,
+        });
+      }
+    }
+
+    return relationships;
   } finally {
     db.close();
   }

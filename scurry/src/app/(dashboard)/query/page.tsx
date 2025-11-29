@@ -215,6 +215,7 @@ export default function QueryPage() {
           <div className="h-[calc(100%-60px)] overflow-hidden">
             <ChatPanel
               connectionId={selectedConnectionId || undefined}
+              teamId={effectiveTeamId}
               onInsertSQL={(sql) => {
                 setCurrentQuery(sql);
                 setShowAI(false);
@@ -305,6 +306,7 @@ export default function QueryPage() {
           <div className="w-[350px] border-l flex-shrink-0 flex flex-col overflow-hidden">
             <ChatPanel
               connectionId={selectedConnectionId || undefined}
+              teamId={effectiveTeamId}
               onInsertSQL={(sql) => {
                 setCurrentQuery(sql);
               }}

@@ -1,12 +1,23 @@
 'use client';
 
 import * as React from 'react';
-import { Bot, Send, User, Copy, Check, X, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Bot, Send, User, Copy, Check, X, Loader2, Sparkles, AlertCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface Message {
   id: string;
@@ -16,17 +27,61 @@ interface Message {
 
 interface ChatPanelProps {
   connectionId?: string;
+  teamId?: string | null;
   onInsertSQL?: (sql: string) => void;
   className?: string;
 }
 
-export function ChatPanel({ connectionId, onInsertSQL, className }: ChatPanelProps) {
+export function ChatPanel({ connectionId, teamId, onInsertSQL, className }: ChatPanelProps) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = React.useState(false);
+  const [isClearing, setIsClearing] = React.useState(false);
   const [error, setError] = React.useState<Error | null>(null);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const prevConnectionIdRef = React.useRef<string | undefined>(connectionId);
+
+  // Load conversation history when component mounts or connection changes
+  React.useEffect(() => {
+    async function loadHistory() {
+      // Only load if connection changed or on initial mount
+      if (prevConnectionIdRef.current === connectionId && messages.length > 0) {
+        return;
+      }
+      prevConnectionIdRef.current = connectionId;
+
+      setIsLoadingHistory(true);
+      try {
+        const params = new URLSearchParams();
+        if (connectionId) {
+          params.set('connectionId', connectionId);
+        }
+        const response = await fetch(`/api/ai/conversation?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(
+              data.messages.map((m: { id: string; role: string; content: string }) => ({
+                id: m.id,
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+              }))
+            );
+          } else {
+            setMessages([]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load conversation history:', err);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    }
+
+    loadHistory();
+  }, [connectionId]);
 
   React.useEffect(() => {
     if (scrollRef.current) {
@@ -45,6 +100,29 @@ export function ChatPanel({ connectionId, onInsertSQL, className }: ChatPanelPro
     if (onInsertSQL) {
       onInsertSQL(sql);
       toast.success('SQL inserted into editor');
+    }
+  };
+
+  const handleClearMemory = async () => {
+    setIsClearing(true);
+    try {
+      const response = await fetch('/api/ai/conversation', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId: connectionId || null }),
+      });
+
+      if (response.ok) {
+        setMessages([]);
+        toast.success('Conversation memory cleared');
+      } else {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to clear memory');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to clear memory');
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -120,6 +198,7 @@ export function ChatPanel({ connectionId, onInsertSQL, className }: ChatPanelPro
         body: JSON.stringify({
           message: userMessage.content,
           connectionId,
+          teamId: teamId || null,
         }),
       });
 
@@ -177,25 +256,66 @@ export function ChatPanel({ connectionId, onInsertSQL, className }: ChatPanelPro
           <Bot className="h-4 w-4 text-primary" />
           <span className="font-medium text-sm">AI Assistant</span>
         </div>
-        {messages.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2"
-            onClick={() => setMessages([])}
-          >
-            <X className="h-3 w-3 mr-1" />
-            Clear
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {messages.length > 0 && (
+            <>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-destructive"
+                    disabled={isClearing}
+                  >
+                    {isClearing ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                    <span className="ml-1 text-xs">Clear Memory</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear Conversation Memory?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete all conversation history for this connection.
+                      The AI will no longer remember previous messages.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleClearMemory}>
+                      Clear Memory
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => setMessages([])}
+                title="Hide messages (keeps memory)"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <ScrollArea ref={scrollRef} className="flex-1 p-4">
-        {messages.length === 0 ? (
+        {isLoadingHistory ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <Bot className="h-12 w-12 mb-4 opacity-50" />
             <p className="text-sm font-medium">Ask me anything about your database</p>
             <p className="text-xs mt-1">I can help you write SQL queries, analyze your schema, and more.</p>
+            <p className="text-xs mt-2 text-primary/70">I remember our conversation history!</p>
             <div className="mt-4 space-y-2">
               <p className="text-xs">Try asking:</p>
               <div className="flex flex-wrap gap-2 justify-center">
