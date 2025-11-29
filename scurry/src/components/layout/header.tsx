@@ -42,9 +42,15 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
         </SheetTrigger>
         <SheetContent side="left" className="w-[280px] p-0">
           <SheetHeader className="p-4 border-b">
-            <SheetTitle className="flex items-center gap-2">
-              <span className="text-xl">🐿️</span>
-              <span>ScurryDB</span>
+            <SheetTitle>
+              <Link
+                href="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 group"
+              >
+                <span className="text-xl transition-transform group-hover:scale-110">🐿️</span>
+                <span>ScurryDB</span>
+              </Link>
             </SheetTitle>
           </SheetHeader>
           <div className="p-4 space-y-4">
@@ -71,7 +77,7 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
       {/* Logo */}
       <Link href="/dashboard" className="flex items-center gap-2 group">
         <span className="text-xl transition-transform group-hover:scale-110">🐿️</span>
-        <span className="font-semibold text-lg hidden sm:inline-block">ScurryDB</span>
+        <span className="font-semibold text-lg">ScurryDB</span>
       </Link>
 
       {/* Desktop Switchers */}
