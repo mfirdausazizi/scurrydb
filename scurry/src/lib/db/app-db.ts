@@ -193,6 +193,21 @@ export async function deleteExpiredSessions(): Promise<number> {
   return result.changes;
 }
 
+export async function getUserSessions(userId: string): Promise<Session[]> {
+  const client = getDbClient();
+  const rows = await client.query<DbRow>(
+    'SELECT * FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC',
+    [userId, new Date().toISOString()]
+  );
+  return rows.map(rowToSession);
+}
+
+export async function deleteAllUserSessions(userId: string): Promise<number> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM sessions WHERE user_id = ?', [userId]);
+  return result.changes;
+}
+
 // Connection functions (with user filtering)
 export async function getAllConnections(userId?: string): Promise<DatabaseConnection[]> {
   const client = getDbClient();
@@ -560,7 +575,10 @@ function rowToSchemaCache(row: DbRow): SchemaCache {
   };
 }
 
-const SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// Schema cache TTL - configurable via environment variable (default: 15 minutes)
+const SCHEMA_CACHE_TTL_MS = parseInt(process.env.SCHEMA_CACHE_TTL_MS || '900000', 10);
+// Refresh threshold - refresh cache when it's within 20% of expiry
+const SCHEMA_CACHE_REFRESH_THRESHOLD = 0.8;
 
 export async function getSchemaCache(connectionId: string): Promise<EnrichedSchema | null> {
   const client = getDbClient();
@@ -614,6 +632,47 @@ export async function cleanExpiredSchemaCache(): Promise<number> {
   const client = getDbClient();
   const result = await client.execute('DELETE FROM schema_cache WHERE expires_at < ?', [new Date().toISOString()]);
   return result.changes;
+}
+
+/**
+ * Check if schema cache needs refresh (approaching expiry)
+ * Returns true if cache exists but will expire soon
+ */
+export async function shouldRefreshSchemaCache(connectionId: string): Promise<boolean> {
+  const client = getDbClient();
+  const now = new Date();
+  const row = await client.queryOne<DbRow>(
+    'SELECT cached_at, expires_at FROM schema_cache WHERE connection_id = ?',
+    [connectionId]
+  );
+
+  if (!row) return false;
+
+  const cachedAt = new Date(row.cached_at as string);
+  const expiresAt = new Date(row.expires_at as string);
+  const totalTTL = expiresAt.getTime() - cachedAt.getTime();
+  const elapsed = now.getTime() - cachedAt.getTime();
+  
+  // Refresh if we've passed the threshold (e.g., 80% of TTL elapsed)
+  return elapsed >= totalTTL * SCHEMA_CACHE_REFRESH_THRESHOLD;
+}
+
+/**
+ * DDL patterns that should invalidate schema cache
+ */
+const DDL_PATTERNS = [
+  /^\s*CREATE\s+(TABLE|INDEX|VIEW|TRIGGER|PROCEDURE|FUNCTION)/i,
+  /^\s*ALTER\s+(TABLE|INDEX|VIEW)/i,
+  /^\s*DROP\s+(TABLE|INDEX|VIEW|TRIGGER|PROCEDURE|FUNCTION)/i,
+  /^\s*TRUNCATE\s+/i,
+  /^\s*RENAME\s+(TABLE|TO)/i,
+];
+
+/**
+ * Check if a SQL query is a DDL statement that modifies schema
+ */
+export function isDDLQuery(sql: string): boolean {
+  return DDL_PATTERNS.some(pattern => pattern.test(sql));
 }
 
 // AI Conversation types and functions

@@ -35,43 +35,39 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { usePendingChangesStore, getStoreKey, emptyChanges } from '@/lib/store/pending-changes-store';
 import type { PendingChanges, DataChangeLog, PendingCellChange, PendingRowInsert, PendingRowDelete } from '@/types';
+import { escapeValueForDisplay } from '@/lib/db/sql-utils';
 
-// SQL generation helpers
-function escapeValue(value: unknown): string {
-  if (value === null) return 'NULL';
-  if (typeof value === 'number') return String(value);
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
+// SQL preview generation helpers (display only - NOT for execution)
+// These generate SQL for preview purposes. Actual execution uses parameterized queries.
 
-function generateUpdateSql(
+function generateUpdateSqlPreview(
   tableName: string,
   update: PendingCellChange,
   primaryKeyColumns: string[],
   rowData: Record<string, unknown>
 ): string {
-  const setClause = `${update.column} = ${escapeValue(update.newValue)}`;
+  const setClause = `${update.column} = ${escapeValueForDisplay(update.newValue)}`;
   const whereClause = primaryKeyColumns
-    .map((pk) => `${pk} = ${escapeValue(rowData[pk])}`)
+    .map((pk) => `${pk} = ${escapeValueForDisplay(rowData[pk])}`)
     .join(' AND ');
-  return `UPDATE ${tableName} SET ${setClause} WHERE ${whereClause};`;
+  return `-- Preview only (actual execution uses parameterized queries)\nUPDATE ${tableName} SET ${setClause} WHERE ${whereClause};`;
 }
 
-function generateInsertSql(tableName: string, insert: PendingRowInsert): string {
+function generateInsertSqlPreview(tableName: string, insert: PendingRowInsert): string {
   const columns = Object.keys(insert.values).join(', ');
-  const values = Object.values(insert.values).map(escapeValue).join(', ');
-  return `INSERT INTO ${tableName} (${columns}) VALUES (${values});`;
+  const values = Object.values(insert.values).map(escapeValueForDisplay).join(', ');
+  return `-- Preview only (actual execution uses parameterized queries)\nINSERT INTO ${tableName} (${columns}) VALUES (${values});`;
 }
 
-function generateDeleteSql(
+function generateDeleteSqlPreview(
   tableName: string,
   del: PendingRowDelete,
   primaryKeyColumns: string[]
 ): string {
   const whereClause = primaryKeyColumns
-    .map((pk) => `${pk} = ${escapeValue(del.rowData[pk])}`)
+    .map((pk) => `${pk} = ${escapeValueForDisplay(del.rowData[pk])}`)
     .join(' AND ');
-  return `DELETE FROM ${tableName} WHERE ${whereClause};`;
+  return `-- Preview only (actual execution uses parameterized queries)\nDELETE FROM ${tableName} WHERE ${whereClause};`;
 }
 
 interface PendingChangesPanelProps {
@@ -291,7 +287,7 @@ export function PendingChangesPanel({
                       <h5 className="text-xs font-medium text-amber-700 dark:text-amber-400">Updates</h5>
                       {currentChanges.updates.map((update, i) => {
                         const rowData = previewData[update.rowIndex] || {};
-                        const sql = generateUpdateSql(currentTableName, update, primaryKeyColumns, rowData);
+                        const sql = generateUpdateSqlPreview(currentTableName, update, primaryKeyColumns, rowData);
                         return (
                           <div key={i} className="flex items-center justify-between text-xs gap-2">
                             <span className="truncate flex-1">
@@ -320,7 +316,7 @@ export function PendingChangesPanel({
                     <div className="space-y-1">
                       <h5 className="text-xs font-medium text-green-700 dark:text-green-400">Inserts</h5>
                       {currentChanges.inserts.map((insert) => {
-                        const sql = generateInsertSql(currentTableName, insert);
+                        const sql = generateInsertSqlPreview(currentTableName, insert);
                         return (
                           <div key={insert.tempId} className="flex items-center justify-between text-xs gap-2">
                             <span className="truncate flex-1 font-mono">
@@ -347,7 +343,7 @@ export function PendingChangesPanel({
                     <div className="space-y-1">
                       <h5 className="text-xs font-medium text-red-700 dark:text-red-400">Deletes</h5>
                       {currentChanges.deletes.map((del) => {
-                        const sql = generateDeleteSql(currentTableName, del, primaryKeyColumns);
+                        const sql = generateDeleteSqlPreview(currentTableName, del, primaryKeyColumns);
                         return (
                           <div key={del.rowIndex} className="flex items-center justify-between text-xs gap-2">
                             <span className="truncate flex-1 font-mono">

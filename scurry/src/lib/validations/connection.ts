@@ -1,6 +1,21 @@
 import { z } from 'zod';
 
 export const databaseTypes = ['mysql', 'postgresql', 'mariadb', 'sqlite'] as const;
+export const sshAuthMethods = ['password', 'privateKey'] as const;
+
+// SSH configuration schema (simplified - validation handled at form level)
+export const sshConfigSchema = z.object({
+  enabled: z.boolean(),
+  host: z.string(),
+  port: z.number().int().min(1).max(65535),
+  username: z.string(),
+  authMethod: z.enum(sshAuthMethods),
+  password: z.string(),
+  privateKey: z.string(),
+  passphrase: z.string(),
+}).optional();
+
+export type SSHConfigFormData = z.infer<typeof sshConfigSchema>;
 
 // Simplified schema for form that works with all types
 export const connectionFormSchema = z.object({
@@ -13,6 +28,16 @@ export const connectionFormSchema = z.object({
   password: z.string(),
   ssl: z.boolean(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format').optional(),
+  ssh: z.object({
+    enabled: z.boolean(),
+    host: z.string(),
+    port: z.number().int().min(1).max(65535),
+    username: z.string(),
+    authMethod: z.enum(sshAuthMethods),
+    password: z.string(),
+    privateKey: z.string(),
+    passphrase: z.string(),
+  }).optional(),
 }).refine((data) => {
   // For non-SQLite databases, require host, port, and username
   if (data.type !== 'sqlite') {

@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Database, Loader2, AlertTriangle, Table2, Users, PanelLeft } from 'lucide-react';
+import { Database, Loader2, AlertTriangle, Table2, Users, PanelLeft, SquareTerminal } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +15,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { SchemaTree, TableStructure } from '@/components/schema';
+import { SchemaTree, TableStructure, TablesSummary } from '@/components/schema';
 import { useConnections, useWorkspaceContext } from '@/hooks';
 import { usePendingChangesStore } from '@/lib/store/pending-changes-store';
 import type { TableInfo, ColumnDefinition, IndexInfo, QueryResult } from '@/types';
@@ -30,6 +31,7 @@ function BrowsePageContent() {
   const [tables, setTables] = React.useState<TableInfo[]>([]);
   const [tablesLoading, setTablesLoading] = React.useState(false);
   const [selectedTable, setSelectedTable] = React.useState<string | null>(null);
+  const [showTablesOverview, setShowTablesOverview] = React.useState(false);
   const [columns, setColumns] = React.useState<ColumnDefinition[]>([]);
   const [indexes, setIndexes] = React.useState<IndexInfo[]>([]);
   const [structureLoading, setStructureLoading] = React.useState(false);
@@ -232,6 +234,13 @@ function BrowsePageContent() {
 
   const handleSelectTable = React.useCallback((tableName: string) => {
     setSelectedTable(tableName);
+    setShowTablesOverview(false);
+    setSidebarOpen(false);
+  }, []);
+
+  const handleSelectTablesOverview = React.useCallback(() => {
+    setSelectedTable(null);
+    setShowTablesOverview(true);
     setSidebarOpen(false);
   }, []);
 
@@ -292,6 +301,12 @@ function BrowsePageContent() {
             Explore your database schema and data.
           </p>
         </div>
+        <Link href="/query">
+          <Button variant="outline" className="border-dashed gap-2">
+            <SquareTerminal className="h-4 w-4" />
+            Query Editor
+          </Button>
+        </Link>
       </div>
 
       {/* Mobile Schema Tree Sheet */}
@@ -305,7 +320,9 @@ function BrowsePageContent() {
               tables={tables}
               loading={tablesLoading}
               selectedTable={selectedTable}
+              showTablesOverview={showTablesOverview}
               onSelectTable={handleSelectTable}
+              onSelectTablesOverview={handleSelectTablesOverview}
               onRefresh={fetchTables}
             />
           </div>
@@ -347,7 +364,9 @@ function BrowsePageContent() {
             tables={tables}
             loading={tablesLoading}
             selectedTable={selectedTable}
-            onSelectTable={setSelectedTable}
+            showTablesOverview={showTablesOverview}
+            onSelectTable={handleSelectTable}
+            onSelectTablesOverview={handleSelectTablesOverview}
             onRefresh={fetchTables}
             onCollapse={() => setIsSidebarCollapsed(true)}
           />
@@ -377,6 +396,11 @@ function BrowsePageContent() {
                 teamId={effectiveTeamId}
                 onLoadPreview={fetchPreview}
                 onRefreshPreview={fetchPreview}
+              />
+            ) : showTablesOverview ? (
+              <TablesSummary
+                tables={tables}
+                onSelectTable={handleSelectTable}
               />
             ) : (
               <div className="flex items-center justify-center h-full min-h-[300px] md:min-h-[400px]">

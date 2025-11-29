@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { passwordChangeSchema } from '@/lib/validations/account';
-import { getCurrentUser } from '@/lib/auth/session';
+import { getCurrentSession, rotateSession, logoutAllDevices } from '@/lib/auth/session';
 import { getUserById, updateUser } from '@/lib/db/app-db';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 
 export async function PUT(request: NextRequest) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const sessionResult = await getCurrentSession();
+    if (!sessionResult) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    
+    const { session, user } = sessionResult;
 
     const body = await request.json();
     const validationResult = passwordChangeSchema.safeParse(body);
@@ -22,6 +24,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const { currentPassword, newPassword } = validationResult.data;
+    const logoutOtherDevices = body.logoutOtherDevices ?? true; // Default to logging out other devices
 
     // Get the full user record with password hash
     const fullUser = await getUserById(user.id);
@@ -49,7 +52,23 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ message: 'Password updated successfully' });
+    // Security: Rotate the current session after password change
+    await rotateSession(session.id, user.id);
+    
+    // Optionally log out all other devices
+    let loggedOutDevices = 0;
+    if (logoutOtherDevices) {
+      // We need to get the new session ID after rotation, but since rotateSession
+      // creates a new session, we just log out all sessions except current
+      const sessions = await logoutAllDevices(user.id);
+      // Note: The new session was just created, so we're safe
+      loggedOutDevices = sessions;
+    }
+
+    return NextResponse.json({ 
+      message: 'Password updated successfully',
+      loggedOutDevices,
+    });
   } catch (error) {
     console.error('Failed to change password:', error);
     return NextResponse.json(

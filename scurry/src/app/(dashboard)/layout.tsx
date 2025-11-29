@@ -3,6 +3,7 @@ import { ThemeProvider } from '@/components/layout/theme-provider';
 import { Header } from '@/components/layout';
 import { Toaster } from '@/components/ui/sonner';
 import { getCurrentUser } from '@/lib/auth/session';
+import { CSRFTokenMeta } from '@/components/security/csrf-token-meta';
 
 export default async function DashboardLayout({
   children,
@@ -22,6 +23,7 @@ export default async function DashboardLayout({
       enableSystem
       disableTransitionOnChange
     >
+      <CSRFTokenMeta />
       <div className="flex min-h-screen flex-col">
         <Header />
         <main className="flex-1 overflow-auto p-4">

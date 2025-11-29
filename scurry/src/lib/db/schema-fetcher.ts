@@ -1,7 +1,6 @@
-import mysql from 'mysql2/promise';
-import { Client } from 'pg';
 import Database from 'better-sqlite3';
 import type { DatabaseConnection, TableInfo, ColumnDefinition, IndexInfo } from '@/types';
+import { getPoolManager } from './connection-pool';
 
 export async function fetchTables(connection: DatabaseConnection): Promise<TableInfo[]> {
   switch (connection.type) {
@@ -97,84 +96,69 @@ export async function fetchAllRelationships(connection: DatabaseConnection): Pro
 }
 
 async function fetchMySqlTables(connection: DatabaseConnection): Promise<TableInfo[]> {
-  const conn = await mysql.createConnection({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? {} : undefined,
-  });
-
-  try {
-    const [rows] = await conn.execute(`
-      SELECT 
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT 
         TABLE_NAME as name,
         TABLE_TYPE as type,
-        TABLE_ROWS as row_count
+        TABLE_ROWS as row_count,
+        COALESCE(DATA_LENGTH, 0) + COALESCE(INDEX_LENGTH, 0) as data_length
       FROM information_schema.TABLES 
       WHERE TABLE_SCHEMA = ?
-      ORDER BY TABLE_NAME
-    `, [connection.database]);
+      ORDER BY TABLE_NAME`,
+    [connection.database]
+  );
 
-    return (rows as Array<{ name: string; type: string; row_count: number }>).map((row) => ({
-      name: row.name,
-      type: row.type === 'VIEW' ? 'view' : 'table',
-      rowCount: row.row_count || 0,
-    }));
-  } finally {
-    await conn.end();
-  }
+  // MySQL/MariaDB may return column names in different cases
+  return result.rows.map((row: Record<string, unknown>) => {
+    // Try both lowercase and original case for column names
+    const name = (row.name ?? row.NAME ?? row.Name) as string;
+    const type = (row.type ?? row.TYPE ?? row.Type) as string;
+    const rowCount = (row.row_count ?? row.ROW_COUNT ?? row.TABLE_ROWS ?? 0) as number;
+    const dataLength = (row.data_length ?? row.DATA_LENGTH ?? 0) as number;
+    
+    return {
+      name,
+      type: type === 'VIEW' ? 'view' as const : 'table' as const,
+      rowCount: rowCount || 0,
+      dataLength: dataLength || 0,
+    };
+  });
 }
 
 async function fetchPostgresTables(connection: DatabaseConnection): Promise<TableInfo[]> {
-  const client = new Client({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
-  });
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT 
+        t.table_name as name,
+        t.table_type as type,
+        COALESCE(s.n_live_tup, 0) as row_count,
+        COALESCE(pg_total_relation_size(quote_ident(t.table_name)::regclass), 0) as data_length
+      FROM information_schema.tables t
+      LEFT JOIN pg_stat_user_tables s ON t.table_name = s.relname
+      WHERE t.table_schema = 'public'
+      ORDER BY t.table_name`
+  );
 
-  await client.connect();
-
-  try {
-    const result = await client.query(`
-      SELECT 
-        table_name as name,
-        table_type as type
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-      ORDER BY table_name
-    `);
-
-    return result.rows.map((row) => ({
-      name: row.name,
-      schema: 'public',
-      type: row.type === 'VIEW' ? 'view' : 'table',
-    }));
-  } finally {
-    await client.end();
-  }
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    schema: 'public',
+    type: row.type === 'VIEW' ? 'view' as const : 'table' as const,
+    rowCount: Number(row.row_count) || 0,
+    dataLength: Number(row.data_length) || 0,
+  }));
 }
 
 async function fetchMySqlColumns(
   connection: DatabaseConnection,
   tableName: string
 ): Promise<ColumnDefinition[]> {
-  const conn = await mysql.createConnection({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? {} : undefined,
-  });
-
-  try {
-    const [rows] = await conn.execute(`
-      SELECT 
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT 
         COLUMN_NAME as name,
         COLUMN_TYPE as type,
         IS_NULLABLE as nullable,
@@ -183,48 +167,29 @@ async function fetchMySqlColumns(
         EXTRA as extra
       FROM information_schema.COLUMNS 
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION
-    `, [connection.database, tableName]);
+      ORDER BY ORDINAL_POSITION`,
+    [connection.database, tableName]
+  );
 
-    return (rows as Array<{
-      name: string;
-      type: string;
-      nullable: string;
-      default_value: string | null;
-      column_key: string;
-      extra: string;
-    }>).map((row) => ({
-      name: row.name,
-      type: row.type,
-      nullable: row.nullable === 'YES',
-      defaultValue: row.default_value || undefined,
-      isPrimaryKey: row.column_key === 'PRI',
-      isForeignKey: row.column_key === 'MUL',
-      autoIncrement: row.extra?.toLowerCase().includes('auto_increment') || false,
-    }));
-  } finally {
-    await conn.end();
-  }
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    type: row.type as string,
+    nullable: row.nullable === 'YES',
+    defaultValue: (row.default_value as string | null) || undefined,
+    isPrimaryKey: row.column_key === 'PRI',
+    isForeignKey: row.column_key === 'MUL',
+    autoIncrement: (row.extra as string)?.toLowerCase().includes('auto_increment') || false,
+  }));
 }
 
 async function fetchPostgresColumns(
   connection: DatabaseConnection,
   tableName: string
 ): Promise<ColumnDefinition[]> {
-  const client = new Client({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
-  });
-
-  await client.connect();
-
-  try {
-    const result = await client.query(`
-      SELECT 
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT 
         c.column_name as name,
         c.data_type as type,
         c.is_nullable as nullable,
@@ -238,88 +203,62 @@ async function fetchPostgresColumns(
         WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1
       ) pk ON c.column_name = pk.column_name
       WHERE c.table_schema = 'public' AND c.table_name = $1
-      ORDER BY c.ordinal_position
-    `, [tableName]);
+      ORDER BY c.ordinal_position`,
+    [tableName]
+  );
 
-    return result.rows.map((row) => {
-      // PostgreSQL serial/identity columns have default values starting with 'nextval('
-      const defaultValue = row.default_value || undefined;
-      const isAutoIncrement = typeof defaultValue === 'string' && 
-        (defaultValue.startsWith('nextval(') || defaultValue.includes('_seq\''));
-      
-      return {
-        name: row.name,
-        type: row.type,
-        nullable: row.nullable === 'YES',
-        defaultValue,
-        isPrimaryKey: row.is_primary_key,
-        isForeignKey: false,
-        autoIncrement: isAutoIncrement,
-      };
-    });
-  } finally {
-    await client.end();
-  }
+  return result.rows.map((row) => {
+    // PostgreSQL serial/identity columns have default values starting with 'nextval('
+    const defaultValue = (row.default_value as string | null) || undefined;
+    const isAutoIncrement = typeof defaultValue === 'string' && 
+      (defaultValue.startsWith('nextval(') || defaultValue.includes('_seq\''));
+    
+    return {
+      name: row.name as string,
+      type: row.type as string,
+      nullable: row.nullable === 'YES',
+      defaultValue,
+      isPrimaryKey: row.is_primary_key as boolean,
+      isForeignKey: false,
+      autoIncrement: isAutoIncrement,
+    };
+  });
 }
 
 async function fetchMySqlIndexes(
   connection: DatabaseConnection,
   tableName: string
 ): Promise<IndexInfo[]> {
-  const conn = await mysql.createConnection({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? {} : undefined,
-  });
-
-  try {
-    const [rows] = await conn.execute(`
-      SELECT 
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT 
         INDEX_NAME as name,
         GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) as columns,
         NOT NON_UNIQUE as is_unique
       FROM information_schema.STATISTICS 
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
       GROUP BY INDEX_NAME, NON_UNIQUE
-      ORDER BY INDEX_NAME
-    `, [connection.database, tableName]);
+      ORDER BY INDEX_NAME`,
+    [connection.database, tableName]
+  );
 
-    return (rows as Array<{
-      name: string;
-      columns: string;
-      is_unique: number;
-    }>).map((row) => ({
-      name: row.name,
-      columns: row.columns.split(','),
-      unique: Boolean(row.is_unique),
-      primary: row.name === 'PRIMARY',
-    }));
-  } finally {
-    await conn.end();
-  }
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    columns: (row.columns as string).split(','),
+    unique: Boolean(row.is_unique),
+    primary: row.name === 'PRIMARY',
+  }));
 }
 
 async function fetchPostgresIndexes(
   connection: DatabaseConnection,
   tableName: string
 ): Promise<IndexInfo[]> {
-  const client = new Client({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
-  });
-
-  await client.connect();
-
-  try {
-    const result = await client.query(`
-      SELECT
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT
         i.relname as name,
         array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns,
         ix.indisunique as is_unique,
@@ -330,18 +269,16 @@ async function fetchPostgresIndexes(
       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
       WHERE t.relname = $1 AND t.relkind = 'r'
       GROUP BY i.relname, ix.indisunique, ix.indisprimary
-      ORDER BY i.relname
-    `, [tableName]);
+      ORDER BY i.relname`,
+    [tableName]
+  );
 
-    return result.rows.map((row) => ({
-      name: row.name,
-      columns: row.columns,
-      unique: row.is_unique,
-      primary: row.is_primary,
-    }));
-  } finally {
-    await client.end();
-  }
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    columns: row.columns as string[],
+    unique: row.is_unique as boolean,
+    primary: row.is_primary as boolean,
+  }));
 }
 
 // SQLite schema fetcher functions
@@ -456,61 +393,36 @@ async function fetchMySqlForeignKeys(
   connection: DatabaseConnection,
   tableName: string
 ): Promise<ForeignKeyInfo[]> {
-  const conn = await mysql.createConnection({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? {} : undefined,
-  });
-
-  try {
-    const [rows] = await conn.execute(`
-      SELECT
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT
         CONSTRAINT_NAME as constraint_name,
         COLUMN_NAME as column_name,
         REFERENCED_TABLE_NAME as referenced_table,
         REFERENCED_COLUMN_NAME as referenced_column
       FROM information_schema.KEY_COLUMN_USAGE
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
-      ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
-    `, [connection.database, tableName]);
+      ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
+    [connection.database, tableName]
+  );
 
-    return (rows as Array<{
-      constraint_name: string;
-      column_name: string;
-      referenced_table: string;
-      referenced_column: string;
-    }>).map((row) => ({
-      constraintName: row.constraint_name,
-      columnName: row.column_name,
-      referencedTable: row.referenced_table,
-      referencedColumn: row.referenced_column,
-    }));
-  } finally {
-    await conn.end();
-  }
+  return result.rows.map((row) => ({
+    constraintName: row.constraint_name as string,
+    columnName: row.column_name as string,
+    referencedTable: row.referenced_table as string,
+    referencedColumn: row.referenced_column as string,
+  }));
 }
 
 async function fetchPostgresForeignKeys(
   connection: DatabaseConnection,
   tableName: string
 ): Promise<ForeignKeyInfo[]> {
-  const client = new Client({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
-  });
-
-  await client.connect();
-
-  try {
-    const result = await client.query(`
-      SELECT
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT
         tc.constraint_name,
         kcu.column_name,
         ccu.table_name AS referenced_table,
@@ -524,18 +436,16 @@ async function fetchPostgresForeignKeys(
         AND ccu.table_schema = tc.table_schema
       WHERE tc.constraint_type = 'FOREIGN KEY'
         AND tc.table_schema = 'public'
-        AND tc.table_name = $1
-    `, [tableName]);
+        AND tc.table_name = $1`,
+    [tableName]
+  );
 
-    return result.rows.map((row) => ({
-      constraintName: row.constraint_name,
-      columnName: row.column_name,
-      referencedTable: row.referenced_table,
-      referencedColumn: row.referenced_column,
-    }));
-  } finally {
-    await client.end();
-  }
+  return result.rows.map((row) => ({
+    constraintName: row.constraint_name as string,
+    columnName: row.column_name as string,
+    referencedTable: row.referenced_table as string,
+    referencedColumn: row.referenced_column as string,
+  }));
 }
 
 function fetchSqliteForeignKeys(
@@ -566,58 +476,33 @@ function fetchSqliteForeignKeys(
 
 // Fetch all relationships in the database
 async function fetchMySqlAllRelationships(connection: DatabaseConnection): Promise<TableRelationship[]> {
-  const conn = await mysql.createConnection({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? {} : undefined,
-  });
-
-  try {
-    const [rows] = await conn.execute(`
-      SELECT
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT
         TABLE_NAME as from_table,
         COLUMN_NAME as from_column,
         REFERENCED_TABLE_NAME as to_table,
         REFERENCED_COLUMN_NAME as to_column
       FROM information_schema.KEY_COLUMN_USAGE
       WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL
-      ORDER BY TABLE_NAME, COLUMN_NAME
-    `, [connection.database]);
+      ORDER BY TABLE_NAME, COLUMN_NAME`,
+    [connection.database]
+  );
 
-    return (rows as Array<{
-      from_table: string;
-      from_column: string;
-      to_table: string;
-      to_column: string;
-    }>).map((row) => ({
-      fromTable: row.from_table,
-      fromColumn: row.from_column,
-      toTable: row.to_table,
-      toColumn: row.to_column,
-    }));
-  } finally {
-    await conn.end();
-  }
+  return result.rows.map((row) => ({
+    fromTable: row.from_table as string,
+    fromColumn: row.from_column as string,
+    toTable: row.to_table as string,
+    toColumn: row.to_column as string,
+  }));
 }
 
 async function fetchPostgresAllRelationships(connection: DatabaseConnection): Promise<TableRelationship[]> {
-  const client = new Client({
-    host: connection.host,
-    port: connection.port,
-    user: connection.username,
-    password: connection.password,
-    database: connection.database,
-    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
-  });
-
-  await client.connect();
-
-  try {
-    const result = await client.query(`
-      SELECT
+  const poolManager = getPoolManager();
+  const result = await poolManager.executeQuery(
+    connection,
+    `SELECT
         tc.table_name AS from_table,
         kcu.column_name AS from_column,
         ccu.table_name AS to_table,
@@ -631,18 +516,15 @@ async function fetchPostgresAllRelationships(connection: DatabaseConnection): Pr
         AND ccu.table_schema = tc.table_schema
       WHERE tc.constraint_type = 'FOREIGN KEY'
         AND tc.table_schema = 'public'
-      ORDER BY tc.table_name, kcu.column_name
-    `);
+      ORDER BY tc.table_name, kcu.column_name`
+  );
 
-    return result.rows.map((row) => ({
-      fromTable: row.from_table,
-      fromColumn: row.from_column,
-      toTable: row.to_table,
-      toColumn: row.to_column,
-    }));
-  } finally {
-    await client.end();
-  }
+  return result.rows.map((row) => ({
+    fromTable: row.from_table as string,
+    fromColumn: row.from_column as string,
+    toTable: row.to_table as string,
+    toColumn: row.to_column as string,
+  }));
 }
 
 function fetchSqliteAllRelationships(connection: DatabaseConnection): TableRelationship[] {

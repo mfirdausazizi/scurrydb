@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnectionById, updateConnection, deleteConnection } from '@/lib/db/app-db';
 import { connectionFormSchema } from '@/lib/validations/connection';
 import { getCurrentUser } from '@/lib/auth/session';
+import { invalidateConnectionPool } from '@/lib/db/query-executor';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -72,6 +73,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
     
+    // Invalidate the connection pool since connection details may have changed
+    await invalidateConnectionPool(id);
+    
     const { password: _password, ...safeConnection } = updated;
     return NextResponse.json(safeConnection);
   } catch (error) {
@@ -112,6 +116,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         { status: 404 }
       );
     }
+    
+    // Clean up the connection pool
+    await invalidateConnectionPool(id);
     
     return NextResponse.json({ success: true });
   } catch (error) {

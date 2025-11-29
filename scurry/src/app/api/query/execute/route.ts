@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getConnectionById } from '@/lib/db/app-db';
+import { getConnectionById, isDDLQuery, invalidateSchemaCache } from '@/lib/db/app-db';
 import { executeQuery } from '@/lib/db/query-executor';
 import { getCurrentUser } from '@/lib/auth/session';
 import { validateConnectionAccess } from '@/lib/db/teams';
@@ -86,6 +86,12 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await executeQuery(connection, sql, limit);
+    
+    // Invalidate schema cache if this was a DDL query
+    if (isDDLQuery(sql)) {
+      await invalidateSchemaCache(connectionId);
+    }
+    
     return NextResponse.json(result);
   } catch (error) {
     console.error('Query execution error:', error);

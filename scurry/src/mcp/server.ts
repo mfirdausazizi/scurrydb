@@ -15,9 +15,21 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createHmac } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// =============================================
+// Authentication Configuration
+// =============================================
+
+interface AuthenticatedUser {
+  userId: string;
+  permissions: string[];
+}
+
+let authenticatedUser: AuthenticatedUser | null = null;
 
 // Simple decryption for passwords (must match encryption.ts)
 function getEncryptionKey(): string {
@@ -36,6 +48,77 @@ function getEncryptionKey(): string {
 }
 
 const ENCRYPTION_KEY = getEncryptionKey();
+
+/**
+ * Authenticates the MCP server using an API key
+ * Returns user info if valid, null otherwise
+ */
+async function authenticateMCPKey(apiKey: string | undefined): Promise<AuthenticatedUser | null> {
+  if (!apiKey) {
+    return null;
+  }
+  
+  const KEY_PREFIX = 'scurry_';
+  if (!apiKey.startsWith(KEY_PREFIX)) {
+    return null;
+  }
+  
+  const dbPath = getAppDbPath();
+  if (!fs.existsSync(dbPath)) {
+    return null;
+  }
+  
+  const db = new Database(dbPath, { readonly: true });
+  
+  try {
+    // Hash the API key
+    const keyHash = createHmac('sha256', ENCRYPTION_KEY)
+      .update(apiKey)
+      .digest('hex');
+    
+    // Look up the key
+    const row = db.prepare(
+      `SELECT user_id, permissions FROM mcp_api_keys 
+       WHERE key_hash = ? 
+       AND (expires_at IS NULL OR expires_at > ?)`
+    ).get(keyHash, new Date().toISOString()) as { user_id: string; permissions: string } | undefined;
+    
+    if (!row) {
+      return null;
+    }
+    
+    // Update last used timestamp (in a separate connection to avoid readonly issues)
+    const dbWrite = new Database(dbPath, { readonly: false });
+    dbWrite.prepare('UPDATE mcp_api_keys SET last_used_at = ? WHERE key_hash = ?')
+      .run(new Date().toISOString(), keyHash);
+    dbWrite.close();
+    
+    let permissions: string[] = ['read'];
+    try {
+      permissions = row.permissions ? JSON.parse(row.permissions) : ['read'];
+    } catch {
+      permissions = ['read'];
+    }
+    
+    return {
+      userId: row.user_id,
+      permissions,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Checks if the authenticated user has a specific permission
+ */
+function hasPermission(permission: string): boolean {
+  if (!authenticatedUser) {
+    return false;
+  }
+  return authenticatedUser.permissions.includes(permission) || 
+         authenticatedUser.permissions.includes('admin');
+}
 
 function decrypt(encryptedData: string): string {
   try {
@@ -61,6 +144,7 @@ function getAppDbPath(): string {
 }
 
 // Get connections from app database
+// Now filtered by authenticated user
 function getConnections(): Array<{
   id: string;
   name: string;
@@ -77,7 +161,10 @@ function getConnections(): Array<{
   }
 
   const db = new Database(dbPath, { readonly: true });
-  const rows = db.prepare('SELECT * FROM connections ORDER BY name').all() as Array<{
+  
+  // If authenticated, only return user's connections
+  // If not authenticated (legacy mode), return all connections
+  let rows: Array<{
     id: string;
     name: string;
     type: string;
@@ -87,6 +174,13 @@ function getConnections(): Array<{
     username: string;
     password: string;
   }>;
+  
+  if (authenticatedUser) {
+    rows = db.prepare('SELECT * FROM connections WHERE user_id = ? ORDER BY name')
+      .all(authenticatedUser.userId) as typeof rows;
+  } else {
+    rows = db.prepare('SELECT * FROM connections ORDER BY name').all() as typeof rows;
+  }
 
   db.close();
 
@@ -289,6 +383,32 @@ async function getSchema(connectionId: string): Promise<string> {
 
 // Create and start the MCP server
 async function main() {
+  // =============================================
+  // Authentication Check
+  // =============================================
+  
+  const apiKey = process.env.SCURRYDB_API_KEY;
+  
+  if (apiKey) {
+    // Authenticate using the provided API key
+    authenticatedUser = await authenticateMCPKey(apiKey);
+    
+    if (!authenticatedUser) {
+      console.error('Error: Invalid or expired API key');
+      console.error('Generate a new API key in ScurryDB Settings > MCP API Keys');
+      process.exit(1);
+    }
+    
+    console.error(`Authenticated as user: ${authenticatedUser.userId}`);
+    console.error(`Permissions: ${authenticatedUser.permissions.join(', ')}`);
+  } else {
+    // No API key - warn but allow for backwards compatibility
+    console.error('Warning: SCURRYDB_API_KEY not set');
+    console.error('Running in legacy mode - all connections accessible');
+    console.error('For secure access, generate an API key in ScurryDB Settings > MCP API Keys');
+    console.error('Then set SCURRYDB_API_KEY in your Claude Desktop configuration');
+  }
+  
   const server = new Server(
     {
       name: 'scurrydb-mcp-server',
@@ -390,6 +510,25 @@ async function main() {
 
         case 'execute_query': {
           const { connectionId, sql } = args as { connectionId: string; sql: string };
+          
+          // Check write permission for non-SELECT queries
+          const isReadOnly = sql.trim().toUpperCase().startsWith('SELECT') ||
+                            sql.trim().toUpperCase().startsWith('EXPLAIN') ||
+                            sql.trim().toUpperCase().startsWith('DESCRIBE') ||
+                            sql.trim().toUpperCase().startsWith('SHOW');
+          
+          if (!isReadOnly && authenticatedUser && !hasPermission('write')) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: 'Error: Write permission required for this query type. Your API key only has read access.',
+                },
+              ],
+              isError: true,
+            };
+          }
+          
           const result = await executeQuery(connectionId, sql);
           return {
             content: [

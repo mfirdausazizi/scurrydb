@@ -34,17 +34,25 @@ interface ResultsTableProps {
   result: QueryResult;
 }
 
+// PERF-007: Track copied cell state globally to avoid re-renders
+const CopiedCellContext = React.createContext<{
+  copiedCell: string | null;
+  setCopiedCell: (cellId: string | null) => void;
+}>({ copiedCell: null, setCopiedCell: () => {} });
+
 export const ResultsTable = React.memo(function ResultsTable({ result }: ResultsTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [copiedCell, setCopiedCell] = React.useState<string | null>(null);
   const tableContainerRef = React.useRef<HTMLDivElement>(null);
 
-  const handleCopy = React.useCallback(async (value: string, cellId: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopiedCell(cellId);
-    setTimeout(() => setCopiedCell(null), 2000);
-  }, []);
+  // Memoize context value to prevent unnecessary re-renders
+  const copiedCellContextValue = React.useMemo(
+    () => ({ copiedCell, setCopiedCell }),
+    [copiedCell]
+  );
 
+  // PERF-007: Memoize columns separately from copiedCell state
+  // This prevents the entire table from re-rendering when a cell is copied
   const columns: ColumnDef<Record<string, unknown>>[] = React.useMemo(() => {
     return result.columns.map((col) => ({
       accessorKey: col.name,
@@ -62,17 +70,10 @@ export const ResultsTable = React.memo(function ResultsTable({ result }: Results
       cell: ({ getValue, row, column }) => {
         const value = getValue();
         const cellId = `${row.index}-${column.id}`;
-        return (
-          <CellValue
-            value={value}
-            cellId={cellId}
-            onCopy={handleCopy}
-            isCopied={copiedCell === cellId}
-          />
-        );
+        return <MemoizedCellValue value={value} cellId={cellId} />;
       },
     }));
-  }, [result.columns, copiedCell, handleCopy]);
+  }, [result.columns]); // PERF-007: Removed copiedCell from dependencies
 
   const table = useReactTable({
     data: result.rows,
@@ -113,73 +114,83 @@ export const ResultsTable = React.memo(function ResultsTable({ result }: Results
   }
 
   return (
-    <div className="space-y-2 min-w-0">
-      <MobileTableWrapper maxHeight="max-h-[350px] md:max-h-[500px]">
-        <div ref={tableContainerRef} className="min-w-full">
-          <Table>
-            <TableHeader className="sticky top-0 bg-background z-20">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="whitespace-nowrap bg-background">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {paddingTop > 0 && (
-                <tr>
-                  <td style={{ height: `${paddingTop}px` }} colSpan={columns.length} />
-                </tr>
-              )}
-              {virtualRows.map((virtualRow) => {
-                const row = rows[virtualRow.index];
-                return (
-                  <TableRow key={row.id} data-index={virtualRow.index}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="font-mono text-sm md:text-sm text-xs">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
+    <CopiedCellContext.Provider value={copiedCellContextValue}>
+      <div className="space-y-2 min-w-0">
+        <MobileTableWrapper maxHeight="max-h-[350px] md:max-h-[500px]">
+          <div ref={tableContainerRef} className="min-w-full">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-20">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id} className="whitespace-nowrap bg-background">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
                     ))}
                   </TableRow>
-                );
-              })}
-              {paddingBottom > 0 && (
-                <tr>
-                  <td style={{ height: `${paddingBottom}px` }} colSpan={columns.length} />
-                </tr>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </MobileTableWrapper>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {paddingTop > 0 && (
+                  <tr>
+                    <td style={{ height: `${paddingTop}px` }} colSpan={columns.length} />
+                  </tr>
+                )}
+                {virtualRows.map((virtualRow) => {
+                  const row = rows[virtualRow.index];
+                  return (
+                    <TableRow key={row.id} data-index={virtualRow.index}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="font-mono text-sm md:text-sm text-xs">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })}
+                {paddingBottom > 0 && (
+                  <tr>
+                    <td style={{ height: `${paddingBottom}px` }} colSpan={columns.length} />
+                  </tr>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </MobileTableWrapper>
 
-      <div className="flex items-center justify-between px-2">
-        <div className="text-sm text-muted-foreground">
-          Showing {result.rows.length} of {result.rowCount} rows
+        <div className="flex items-center justify-between px-2">
+          <div className="text-sm text-muted-foreground">
+            Showing {result.rows.length} of {result.rowCount} rows
+          </div>
         </div>
       </div>
-    </div>
+    </CopiedCellContext.Provider>
   );
 });
 
-interface CellValueProps {
+interface MemoizedCellValueProps {
   value: unknown;
   cellId: string;
-  onCopy: (value: string, cellId: string) => void;
-  isCopied: boolean;
 }
 
-const CellValue = React.memo(function CellValue({
+// PERF-007: Memoized cell value that only re-renders when value changes
+// Uses context for copy state to avoid prop drilling and unnecessary re-renders
+const MemoizedCellValue = React.memo(function MemoizedCellValue({
   value,
   cellId,
-  onCopy,
-  isCopied,
-}: CellValueProps) {
+}: MemoizedCellValueProps) {
+  const { copiedCell, setCopiedCell } = React.useContext(CopiedCellContext);
+  const isCopied = copiedCell === cellId;
+
+  const handleCopy = React.useCallback(async () => {
+    const strValue = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+    await navigator.clipboard.writeText(strValue);
+    setCopiedCell(cellId);
+    setTimeout(() => setCopiedCell(null), 2000);
+  }, [value, cellId, setCopiedCell]);
+
   if (value === null) {
     return <span className="italic text-muted-foreground">NULL</span>;
   }
@@ -197,7 +208,7 @@ const CellValue = React.memo(function CellValue({
         variant="ghost"
         size="icon"
         className="absolute right-0 top-0 h-6 w-6 opacity-0 group-hover:opacity-100 touch-target"
-        onClick={() => onCopy(strValue, cellId)}
+        onClick={handleCopy}
       >
         {isCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </Button>

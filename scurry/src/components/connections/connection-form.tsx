@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, CheckCircle, XCircle, Users, Trash2, Info } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Users, Trash2, Info, KeyRound, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -32,11 +33,18 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
   connectionFormSchema,
   databaseTypes,
   defaultPorts,
   connectionColors,
+  sshAuthMethods,
   type ConnectionFormData,
 } from '@/lib/validations/connection';
 import type { DatabaseConnection } from '@/types';
@@ -75,6 +83,9 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
   
   // Server IP state
   const [serverIP, setServerIP] = React.useState<string | null>(null);
+  
+  // SSH section state
+  const [sshExpanded, setSshExpanded] = React.useState(false);
 
   const isEditing = !!connection?.id;
 
@@ -175,6 +186,16 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
       password: connection?.password || '',
       ssl: connection?.ssl || false,
       color: connection?.color || connectionColors[0],
+      ssh: connection?.ssh || {
+        enabled: false,
+        host: '',
+        port: 22,
+        username: '',
+        authMethod: 'password',
+        password: '',
+        privateKey: '',
+        passphrase: '',
+      },
     },
   });
 
@@ -212,7 +233,19 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
         password: connection.password || '',
         ssl: connection.ssl || false,
         color: connection.color || connectionColors[0],
+        ssh: connection.ssh || {
+          enabled: false,
+          host: '',
+          port: 22,
+          username: '',
+          authMethod: 'password',
+          password: '',
+          privateKey: '',
+          passphrase: '',
+        },
       });
+      // Expand SSH section if it's enabled
+      setSshExpanded(connection.ssh?.enabled || false);
     }
   }, [connection, form]);
 
@@ -449,6 +482,188 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
                   )}
                 />
               </div>
+            )}
+
+            {/* SSH Tunnel Section - Only for non-SQLite connections */}
+            {!isSqlite && (
+              <>
+                <Separator className="my-4" />
+                <Collapsible open={sshExpanded} onOpenChange={setSshExpanded}>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 w-full text-left"
+                    >
+                      {sshExpanded ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                      <KeyRound className="h-4 w-4" />
+                      <span className="font-medium text-sm">SSH Tunnel</span>
+                      {form.watch('ssh.enabled') && (
+                        <Badge variant="secondary" className="text-xs ml-2">
+                          Enabled
+                        </Badge>
+                      )}
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label htmlFor="ssh-enabled" className="text-sm font-medium">
+                          Enable SSH Tunnel
+                        </label>
+                        <p className="text-xs text-muted-foreground">
+                          Connect to the database through an SSH tunnel
+                        </p>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="ssh.enabled"
+                        render={({ field }) => (
+                          <Switch
+                            id="ssh-enabled"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </div>
+                    
+                    {form.watch('ssh.enabled') && (
+                      <div className="space-y-4 pl-4 border-l-2 border-muted">
+                        <div className="grid grid-cols-3 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="ssh.host"
+                            render={({ field }) => (
+                              <FormItem className="col-span-2">
+                                <FormLabel>SSH Host</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="ssh.example.com" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="ssh.port"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>SSH Port</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="22"
+                                    {...field}
+                                    onChange={(e) => field.onChange(e.target.valueAsNumber || 22)}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        
+                        <FormField
+                          control={form.control}
+                          name="ssh.username"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>SSH Username</FormLabel>
+                              <FormControl>
+                                <Input placeholder="ubuntu" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="ssh.authMethod"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Authentication Method</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select method" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="password">Password</SelectItem>
+                                  <SelectItem value="privateKey">Private Key</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        {form.watch('ssh.authMethod') === 'password' && (
+                          <FormField
+                            control={form.control}
+                            name="ssh.password"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>SSH Password</FormLabel>
+                                <FormControl>
+                                  <Input type="password" placeholder="••••••••" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
+                        
+                        {form.watch('ssh.authMethod') === 'privateKey' && (
+                          <>
+                            <FormField
+                              control={form.control}
+                              name="ssh.privateKey"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Private Key</FormLabel>
+                                  <FormControl>
+                                    <Textarea
+                                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
+                                      className="font-mono text-xs h-24"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <p className="text-xs text-muted-foreground">
+                                    Paste your private key content here
+                                  </p>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="ssh.passphrase"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Passphrase (Optional)</FormLabel>
+                                  <FormControl>
+                                    <Input type="password" placeholder="Key passphrase" {...field} />
+                                  </FormControl>
+                                  <p className="text-xs text-muted-foreground">
+                                    Leave empty if your key is not encrypted
+                                  </p>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              </>
             )}
 
             {/* Team Sharing Section - Only shown when editing */}

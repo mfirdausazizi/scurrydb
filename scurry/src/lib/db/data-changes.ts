@@ -5,9 +5,17 @@ import type {
   PendingChanges,
   ApplyChangesResult,
 } from '@/types';
-import { executeQuery } from './query-executor';
+import { executeQueryWithParams } from './query-executor';
 import type { DatabaseConnection } from '@/types';
 import { getDbClient, getDbType, type DbRow } from './db-client';
+import {
+  validateIdentifier,
+  quoteIdentifier,
+  buildParameterizedInsert,
+  buildParameterizedDelete,
+  buildParameterizedUpdate,
+  type DatabaseType,
+} from './sql-utils';
 
 function rowToDataChangeLog(row: DbRow): DataChangeLog {
   const dbType = getDbType();
@@ -154,37 +162,29 @@ export async function getDataChangeLogs(options: {
   return rows.map(rowToDataChangeLog);
 }
 
-function escapeValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return 'NULL';
+/**
+ * Validates table and column names to prevent SQL injection
+ * @throws Error if any identifier is invalid
+ */
+function validateTableAndColumns(
+  tableName: string,
+  columnNames: string[]
+): void {
+  if (!validateIdentifier(tableName)) {
+    throw new Error(`Invalid table name: ${tableName}`);
   }
-  if (typeof value === 'number') {
-    return String(value);
+  for (const col of columnNames) {
+    if (!validateIdentifier(col)) {
+      throw new Error(`Invalid column name: ${col}`);
+    }
   }
-  if (typeof value === 'boolean') {
-    return value ? '1' : '0';
-  }
-  if (typeof value === 'string') {
-    return `'${value.replace(/'/g, "''")}'`;
-  }
-  if (typeof value === 'object') {
-    return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
-  }
-  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
-function buildWhereClause(
-  primaryKeyColumns: string[],
-  rowData: Record<string, unknown>
-): string {
-  const conditions = primaryKeyColumns.map((col) => {
-    const value = rowData[col];
-    if (value === null || value === undefined) {
-      return `${col} IS NULL`;
-    }
-    return `${col} = ${escapeValue(value)}`;
-  });
-  return conditions.join(' AND ');
+/**
+ * Gets the database type for sql-utils from connection type
+ */
+function getConnectionDbType(connection: DatabaseConnection): DatabaseType {
+  return connection.type as DatabaseType;
 }
 
 export async function applyDataChanges(
@@ -202,13 +202,31 @@ export async function applyDataChanges(
     errors: [],
   };
 
-  // Process deletes first
+  const dbType = getConnectionDbType(connection);
+
+  // Validate table name before any operations
+  try {
+    validateTableAndColumns(tableName, primaryKeyColumns);
+  } catch (error) {
+    result.errors.push(`Validation error: ${error instanceof Error ? error.message : 'Invalid identifiers'}`);
+    result.success = false;
+    return result;
+  }
+
+  // Process deletes first (using parameterized queries)
   for (const del of changes.deletes) {
     try {
-      const whereClause = buildWhereClause(primaryKeyColumns, del.rowData);
-      const sql = `DELETE FROM ${tableName} WHERE ${whereClause}`;
+      // Validate columns in row data
+      validateTableAndColumns(tableName, Object.keys(del.rowData));
       
-      const queryResult = await executeQuery(connection, sql);
+      const { sql, params } = buildParameterizedDelete(
+        tableName,
+        primaryKeyColumns,
+        del.rowData,
+        dbType
+      );
+      
+      const queryResult = await executeQueryWithParams(connection, sql, params);
       
       if (queryResult.error) {
         result.errors.push(`Delete error: ${queryResult.error}`);
@@ -233,7 +251,7 @@ export async function applyDataChanges(
     }
   }
 
-  // Process updates
+  // Process updates (using parameterized queries)
   const updatesByRow = new Map<number, Record<string, { oldValue: unknown; newValue: unknown }>>();
   for (const update of changes.updates) {
     if (!updatesByRow.has(update.rowIndex)) {
@@ -247,9 +265,8 @@ export async function applyDataChanges(
 
   for (const [, columnUpdates] of updatesByRow) {
     try {
-      const setClause = Object.entries(columnUpdates)
-        .map(([col, { newValue }]) => `${col} = ${escapeValue(newValue)}`)
-        .join(', ');
+      // Validate column names
+      validateTableAndColumns(tableName, Object.keys(columnUpdates));
       
       const oldValues: Record<string, unknown> = {};
       const newValues: Record<string, unknown> = {};
@@ -258,18 +275,21 @@ export async function applyDataChanges(
         newValues[col] = newValue;
       }
 
-      // Build WHERE clause using old values of primary key columns
-      const whereConditions = primaryKeyColumns.map((col) => {
-        const value = columnUpdates[col]?.oldValue ?? oldValues[col];
-        if (value === null || value === undefined) {
-          return `${col} IS NULL`;
-        }
-        return `${col} = ${escapeValue(value)}`;
-      });
+      // Build row identifier for WHERE clause using old values of primary key columns
+      const rowIdentifier: Record<string, unknown> = {};
+      for (const col of primaryKeyColumns) {
+        rowIdentifier[col] = columnUpdates[col]?.oldValue ?? oldValues[col];
+      }
 
-      const sql = `UPDATE ${tableName} SET ${setClause} WHERE ${whereConditions.join(' AND ')}`;
+      const { sql, params } = buildParameterizedUpdate(
+        tableName,
+        newValues,
+        primaryKeyColumns,
+        rowIdentifier,
+        dbType
+      );
       
-      const queryResult = await executeQuery(connection, sql);
+      const queryResult = await executeQueryWithParams(connection, sql, params);
       
       if (queryResult.error) {
         result.errors.push(`Update error: ${queryResult.error}`);
@@ -294,15 +314,19 @@ export async function applyDataChanges(
     }
   }
 
-  // Process inserts
+  // Process inserts (using parameterized queries)
   for (const insert of changes.inserts) {
     try {
-      const columns = Object.keys(insert.values);
-      const values = Object.values(insert.values);
+      // Validate column names
+      validateTableAndColumns(tableName, Object.keys(insert.values));
       
-      const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${values.map(escapeValue).join(', ')})`;
+      const { sql, params } = buildParameterizedInsert(
+        tableName,
+        insert.values,
+        dbType
+      );
       
-      const queryResult = await executeQuery(connection, sql);
+      const queryResult = await executeQueryWithParams(connection, sql, params);
       
       if (queryResult.error) {
         result.errors.push(`Insert error: ${queryResult.error}`);

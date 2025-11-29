@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnectionById } from '@/lib/db/app-db';
-import { fetchColumns, fetchIndexes } from '@/lib/db/schema-fetcher';
+import { fetchColumns, fetchIndexes, fetchTables } from '@/lib/db/schema-fetcher';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getEffectivePermissions } from '@/lib/db/permissions';
 import { filterAllowedColumns, filterAllowedTables } from '@/lib/permissions/validator';
 import { validateConnectionAccess } from '@/lib/db/teams';
+import { validateTableExists } from '@/lib/db/sql-utils';
 
 type RouteParams = { params: Promise<{ table: string }> };
 
@@ -50,10 +51,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Validate table exists in schema to prevent SQL injection
+    const tables = await fetchTables(connection);
+    const tableValidation = validateTableExists(table, tables);
+    
+    if (!tableValidation.valid || !tableValidation.actualName) {
+      return NextResponse.json(
+        { error: 'Table not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Use the actual table name from schema (preserves correct casing)
+    const validatedTableName = tableValidation.actualName;
+
     // Check table access if this is a team connection
     if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
-      const allowedTables = filterAllowedTables([table], permission);
+      const allowedTables = filterAllowedTables([validatedTableName], permission);
       
       if (allowedTables.length === 0) {
         return NextResponse.json(
@@ -64,8 +79,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const [columns, indexes] = await Promise.all([
-      fetchColumns(connection, table),
-      fetchIndexes(connection, table),
+      fetchColumns(connection, validatedTableName),
+      fetchIndexes(connection, validatedTableName),
     ]);
 
     // Filter columns based on permissions if this is a team connection
@@ -73,7 +88,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
       const columnNames = columns.map(c => c.name);
-      const allowedColumnNames = filterAllowedColumns(table, columnNames, permission);
+      const allowedColumnNames = filterAllowedColumns(validatedTableName, columnNames, permission);
       filteredColumns = columns.filter(c => allowedColumnNames.includes(c.name));
     }
 

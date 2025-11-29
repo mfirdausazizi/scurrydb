@@ -14,10 +14,16 @@ import {
 } from '@/components/ui/sheet';
 import { QueryToolbar } from '@/components/editor/query-toolbar';
 import { QueryHistory } from '@/components/editor/query-history';
+import { TabBar } from '@/components/editor/tab-bar';
+import { DangerousQueryDialog } from '@/components/editor/dangerous-query-dialog';
+import { UnsavedChangesDialog } from '@/components/editor/unsaved-changes-dialog';
+import { ImportWizard } from '@/components/import/import-wizard';
 import { ChatPanel } from '@/components/ai/chat-panel';
 import { ResultsTable } from '@/components/results';
 import { useConnections, useMediaQuery, useWorkspaceContext } from '@/hooks';
 import { useQueryStore } from '@/lib/store';
+import { useEditorTabsStore } from '@/lib/store/editor-tabs-store';
+import { detectDangerousQuery, type DangerousQueryInfo } from '@/lib/sql/dangerous-query-detector';
 import type { QueryResult } from '@/types';
 
 const SqlEditor = dynamic(
@@ -28,21 +34,51 @@ const SqlEditor = dynamic(
 export default function QueryPage() {
   const { teamId } = useWorkspaceContext();
   const { connections, loading: connectionsLoading } = useConnections({ teamId });
+  
+  // History store (kept separate for history functionality)
+  const { history, addToHistory } = useQueryStore();
+  
+  // Editor tabs store
   const {
-    history,
-    currentQuery,
-    selectedConnectionId,
-    setCurrentQuery,
-    setSelectedConnectionId,
-    addToHistory,
-  } = useQueryStore();
+    tabs,
+    activeTabId,
+    createTab,
+    closeTab,
+    switchTab,
+    updateTabSql,
+    updateTabResult,
+    updateTabConnection,
+    nextTab,
+    previousTab,
+    goToTab,
+  } = useEditorTabsStore();
 
   const [executing, setExecuting] = React.useState(false);
-  const [result, setResult] = React.useState<QueryResult | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
   const [showAI, setShowAI] = React.useState(false);
   
+  // Dangerous query confirmation state
+  const [dangerousQueryInfo, setDangerousQueryInfo] = React.useState<DangerousQueryInfo | null>(null);
+  const [showDangerousQueryDialog, setShowDangerousQueryDialog] = React.useState(false);
+  
+  // Unsaved changes dialog state
+  const [unsavedTabId, setUnsavedTabId] = React.useState<string | null>(null);
+  const [showUnsavedDialog, setShowUnsavedDialog] = React.useState(false);
+  
+  // Import wizard state
+  const [showImportWizard, setShowImportWizard] = React.useState(false);
+  
   const isMobile = useMediaQuery('(max-width: 767px)');
+
+  // Get active tab
+  const activeTab = React.useMemo(() => {
+    return tabs.find(t => t.id === activeTabId) || tabs[0] || null;
+  }, [tabs, activeTabId]);
+
+  // Current values from active tab
+  const currentQuery = activeTab?.sql || '';
+  const selectedConnectionId = activeTab?.connectionId || null;
+  const result = activeTab?.result || null;
 
   // Check if selected connection is a team/shared connection
   const selectedConnection = React.useMemo(() => {
@@ -54,38 +90,112 @@ export default function QueryPage() {
   // Only pass teamId to API calls if the connection is actually a team connection
   const effectiveTeamId = isSelectedConnectionShared ? teamId : null;
 
-  // Reset connection selection when workspace changes
+  // Initialize first tab with default connection
   React.useEffect(() => {
-    // Clear selected connection if it's not in the current workspace's connection list
-    if (selectedConnectionId && connections.length > 0) {
-      const connectionExists = connections.some(c => c.id === selectedConnectionId);
-      if (!connectionExists) {
-        setSelectedConnectionId(null, teamId);
-        setResult(null);
-      }
-    } else if (selectedConnectionId && !connectionsLoading && connections.length === 0) {
-      // No connections in this workspace, reset
-      setSelectedConnectionId(null, teamId);
-      setResult(null);
+    if (activeTab && !activeTab.connectionId && connections.length > 0) {
+      updateTabConnection(activeTab.id, connections[0].id);
     }
-  }, [connections, selectedConnectionId, connectionsLoading, teamId, setSelectedConnectionId]);
+  }, [activeTab, connections, updateTabConnection]);
 
+  // Handle connection validation when workspace changes
   React.useEffect(() => {
-    if (!selectedConnectionId && connections.length > 0) {
-      setSelectedConnectionId(connections[0].id, teamId);
+    if (activeTab && activeTab.connectionId && connections.length > 0) {
+      const connectionExists = connections.some(c => c.id === activeTab.connectionId);
+      if (!connectionExists) {
+        updateTabConnection(activeTab.id, connections[0]?.id || null);
+        updateTabResult(activeTab.id, null);
+      }
     }
-  }, [connections, selectedConnectionId, setSelectedConnectionId, teamId]);
+  }, [activeTab, connections, updateTabConnection, updateTabResult]);
 
   // Load query from sessionStorage (when coming from saved queries page)
   React.useEffect(() => {
     const savedQuery = sessionStorage.getItem('runQuery');
-    if (savedQuery) {
-      setCurrentQuery(savedQuery);
+    if (savedQuery && activeTab) {
+      updateTabSql(activeTab.id, savedQuery);
       sessionStorage.removeItem('runQuery');
     }
-  }, [setCurrentQuery]);
+  }, [activeTab, updateTabSql]);
 
-  const handleExecute = async () => {
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      
+      if (isMod && e.key === 't') {
+        e.preventDefault();
+        createTab(selectedConnectionId);
+      } else if (isMod && e.key === 'w') {
+        e.preventDefault();
+        if (activeTab) {
+          handleCloseTab(activeTab.id);
+        }
+      } else if (isMod && e.key === 'Tab') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          previousTab();
+        } else {
+          nextTab();
+        }
+      } else if (isMod && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const index = parseInt(e.key) - 1;
+        goToTab(index);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, selectedConnectionId, createTab, nextTab, previousTab, goToTab]);
+
+  // Handle tab close with unsaved check
+  const handleCloseTab = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab?.isDirty) {
+      setUnsavedTabId(tabId);
+      setShowUnsavedDialog(true);
+    } else {
+      closeTab(tabId, true);
+    }
+  };
+
+  // Handle unsaved dialog actions
+  const handleUnsavedDiscard = () => {
+    if (unsavedTabId) {
+      closeTab(unsavedTabId, true);
+    }
+    setShowUnsavedDialog(false);
+    setUnsavedTabId(null);
+  };
+
+  const handleUnsavedCancel = () => {
+    setShowUnsavedDialog(false);
+    setUnsavedTabId(null);
+  };
+
+  // Update current query
+  const setCurrentQuery = (sql: string) => {
+    if (activeTab) {
+      updateTabSql(activeTab.id, sql);
+    }
+  };
+
+  // Update selected connection
+  const setSelectedConnectionId = (connectionId: string | null) => {
+    if (activeTab) {
+      updateTabConnection(activeTab.id, connectionId);
+    }
+  };
+
+  // Set result for current tab
+  const setResult = (newResult: QueryResult | null) => {
+    if (activeTab) {
+      updateTabResult(activeTab.id, newResult);
+    }
+  };
+
+  // Actual query execution logic (called after confirmation if needed)
+  const executeQueryInternal = async () => {
     if (!selectedConnectionId || !currentQuery.trim()) {
       toast.error('Please select a connection and enter a query');
       return;
@@ -101,7 +211,7 @@ export default function QueryPage() {
         body: JSON.stringify({
           connectionId: selectedConnectionId,
           sql: currentQuery,
-          teamId: effectiveTeamId, // Only include team context for shared connections
+          teamId: effectiveTeamId,
         }),
       });
 
@@ -142,6 +252,35 @@ export default function QueryPage() {
     }
   };
 
+  // Entry point for query execution - checks for dangerous queries first
+  const handleExecute = async () => {
+    if (!selectedConnectionId || !currentQuery.trim()) {
+      toast.error('Please select a connection and enter a query');
+      return;
+    }
+
+    const dangerInfo = detectDangerousQuery(currentQuery);
+    
+    if (dangerInfo.isDangerous && dangerInfo.requiresConfirmation) {
+      setDangerousQueryInfo(dangerInfo);
+      setShowDangerousQueryDialog(true);
+      return;
+    }
+
+    await executeQueryInternal();
+  };
+
+  const handleDangerousQueryConfirm = async () => {
+    setShowDangerousQueryDialog(false);
+    setDangerousQueryInfo(null);
+    await executeQueryInternal();
+  };
+
+  const handleDangerousQueryCancel = () => {
+    setShowDangerousQueryDialog(false);
+    setDangerousQueryInfo(null);
+  };
+
   const handleFormat = () => {
     try {
       const formatted = format(currentQuery, { language: 'mysql' });
@@ -179,6 +318,9 @@ export default function QueryPage() {
     toast.success('Results exported to CSV');
   };
 
+  // Get unsaved tab info for dialog
+  const unsavedTab = unsavedTabId ? tabs.find(t => t.id === unsavedTabId) : null;
+
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col min-w-0 overflow-hidden">
       <div className="mb-3 md:mb-4">
@@ -187,6 +329,39 @@ export default function QueryPage() {
           Write and execute SQL queries. Press Ctrl+Enter (or Cmd+Enter) to run.
         </p>
       </div>
+
+      {/* Dangerous Query Confirmation Dialog */}
+      {dangerousQueryInfo && (
+        <DangerousQueryDialog
+          open={showDangerousQueryDialog}
+          onOpenChange={setShowDangerousQueryDialog}
+          queryInfo={dangerousQueryInfo}
+          sql={currentQuery}
+          onConfirm={handleDangerousQueryConfirm}
+          onCancel={handleDangerousQueryCancel}
+        />
+      )}
+
+      {/* Unsaved Changes Dialog */}
+      {unsavedTab && (
+        <UnsavedChangesDialog
+          open={showUnsavedDialog}
+          onOpenChange={setShowUnsavedDialog}
+          tabTitle={unsavedTab.title}
+          sql={unsavedTab.sql}
+          onDiscard={handleUnsavedDiscard}
+          onCancel={handleUnsavedCancel}
+        />
+      )}
+
+      {/* Import Wizard */}
+      <ImportWizard
+        open={showImportWizard}
+        onOpenChange={setShowImportWizard}
+        connections={connections}
+        selectedConnectionId={selectedConnectionId}
+        teamId={effectiveTeamId}
+      />
 
       {/* Mobile Sheets for History and AI */}
       <Sheet open={showHistory && isMobile} onOpenChange={setShowHistory}>
@@ -197,6 +372,7 @@ export default function QueryPage() {
           <div className="h-[calc(100%-60px)] overflow-auto">
             <QueryHistory
               history={history}
+              connections={connections}
               onSelect={(sql) => {
                 setCurrentQuery(sql);
                 setShowHistory(false);
@@ -227,6 +403,10 @@ export default function QueryPage() {
 
       <div className="flex-1 flex min-h-0 overflow-hidden rounded-lg border bg-card">
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Tab Bar */}
+          <TabBar onCloseUnsavedTab={handleCloseTab} />
+          
+          {/* Query Toolbar */}
           <QueryToolbar
             connections={connections}
             selectedConnectionId={selectedConnectionId}
@@ -237,6 +417,7 @@ export default function QueryPage() {
             onToggleHistory={() => setShowHistory(!showHistory)}
             onToggleAI={() => setShowAI(!showAI)}
             onExport={result && result.rows.length > 0 ? handleExport : undefined}
+            onImport={() => setShowImportWizard(true)}
             executing={executing}
             hasResults={!!result && result.rows.length > 0}
             showAI={showAI}
@@ -292,6 +473,7 @@ export default function QueryPage() {
           <div className="w-[300px] border-l flex-shrink-0 overflow-hidden">
             <QueryHistory
               history={history}
+              connections={connections}
               onSelect={(sql) => {
                 setCurrentQuery(sql);
                 setShowHistory(false);

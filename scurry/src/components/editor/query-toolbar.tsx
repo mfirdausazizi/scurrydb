@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Play, Loader2, Code, History, Download, Bot, Save } from 'lucide-react';
+import { Play, Loader2, Code, History, Download, Bot, Save, FileUp } from 'lucide-react';
 import { SaveQueryDialog } from '@/components/queries';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +31,7 @@ interface QueryToolbarProps {
   onToggleHistory: () => void;
   onToggleAI?: () => void;
   onExport?: () => void;
+  onImport?: () => void;
   executing: boolean;
   hasResults: boolean;
   showAI?: boolean;
@@ -47,6 +48,7 @@ export function QueryToolbar({
   onToggleHistory,
   onToggleAI,
   onExport,
+  onImport,
   executing,
   hasResults,
   showAI,
@@ -135,6 +137,17 @@ export function QueryToolbar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Export CSV</TooltipContent>
+          </Tooltip>
+        )}
+
+        {onImport && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={onImport} className="h-9 w-9 touch-target hidden sm:flex">
+                <FileUp className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Import Data</TooltipContent>
           </Tooltip>
         )}
 

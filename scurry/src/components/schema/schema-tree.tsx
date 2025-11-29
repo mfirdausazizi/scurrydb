@@ -18,7 +18,9 @@ interface SchemaTreeProps {
   tables: TableInfo[];
   loading: boolean;
   selectedTable: string | null;
+  showTablesOverview?: boolean;
   onSelectTable: (tableName: string) => void;
+  onSelectTablesOverview?: () => void;
   onRefresh: () => void;
   onCollapse?: () => void;
 }
@@ -27,7 +29,9 @@ export const SchemaTree = React.memo(function SchemaTree({
   tables,
   loading,
   selectedTable,
+  showTablesOverview,
   onSelectTable,
+  onSelectTablesOverview,
   onRefresh,
   onCollapse,
 }: SchemaTreeProps) {
@@ -166,16 +170,26 @@ export const SchemaTree = React.memo(function SchemaTree({
               open={expandedSections.has('tables')}
               onOpenChange={() => toggleSection('tables')}
             >
-              <CollapsibleTrigger className="flex items-center gap-1 w-full p-1 hover:bg-accent rounded text-sm">
-                <ChevronRight
-                  className={cn(
-                    'h-4 w-4 transition-transform',
-                    expandedSections.has('tables') && 'rotate-90'
-                  )}
-                />
-                <Table2 className="h-4 w-4 text-muted-foreground" />
-                <span>Tables ({filteredTables.length})</span>
-              </CollapsibleTrigger>
+              <div className={cn(
+                'flex items-center gap-1 w-full p-1 rounded text-sm',
+                showTablesOverview && !selectedTable && 'bg-accent'
+              )}>
+                <CollapsibleTrigger className="hover:bg-accent/50 rounded p-0.5" onClick={(e) => e.stopPropagation()}>
+                  <ChevronRight
+                    className={cn(
+                      'h-4 w-4 transition-transform',
+                      expandedSections.has('tables') && 'rotate-90'
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <button 
+                  className="flex items-center gap-1 flex-1 hover:text-foreground"
+                  onClick={() => onSelectTablesOverview?.()}
+                >
+                  <Table2 className="h-4 w-4 text-muted-foreground" />
+                  <span>Tables ({filteredTables.length})</span>
+                </button>
+              </div>
               <CollapsibleContent className="overflow-visible">
                 <div className="ml-4 space-y-0.5">
                   {filteredTables.length > 50 ? (

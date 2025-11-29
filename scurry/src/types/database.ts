@@ -1,5 +1,16 @@
 export type DatabaseType = 'mysql' | 'postgresql' | 'mariadb' | 'sqlite';
 
+export interface SSHConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  username: string;
+  authMethod: 'password' | 'privateKey';
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+}
+
 export interface DatabaseConnection {
   id: string;
   name: string;
@@ -11,6 +22,8 @@ export interface DatabaseConnection {
   password: string;
   ssl?: boolean;
   color?: string;
+  timeout?: number; // Query timeout in milliseconds (default: 30000)
+  ssh?: SSHConfig; // Optional SSH tunnel configuration
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +58,7 @@ export interface TableInfo {
   name: string;
   schema?: string;
   rowCount?: number;
+  dataLength?: number; // Table size in bytes
   type: 'table' | 'view';
 }
 

@@ -5,6 +5,8 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { validateConnectionAccess } from '@/lib/db/teams';
 import { getEffectivePermissions } from '@/lib/db/permissions';
 import { filterAllowedTables, filterAllowedColumns } from '@/lib/permissions/validator';
+import { fetchTables, fetchColumns } from '@/lib/db/schema-fetcher';
+import { validateTableExists, validateColumns, quoteIdentifier, type DatabaseType } from '@/lib/db/sql-utils';
 
 type RouteParams = { params: Promise<{ table: string }> };
 
@@ -77,11 +79,36 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Validate table exists in schema to prevent SQL injection
+    const tables = await fetchTables(connection);
+    const tableValidation = validateTableExists(table, tables);
+    
+    if (!tableValidation.valid || !tableValidation.actualName) {
+      return NextResponse.json(
+        { error: 'Table not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Use the actual table name from schema (preserves correct casing)
+    const validatedTableName = tableValidation.actualName;
+    
+    // Validate columns exist in schema
+    const schemaColumns = await fetchColumns(connection, validatedTableName);
+    const columnValidation = validateColumns(searchColumns, schemaColumns);
+    
+    if (columnValidation.validColumnNames.length === 0) {
+      return NextResponse.json(
+        { error: 'None of the specified columns exist in the table' },
+        { status: 400 }
+      );
+    }
+
     // Check table and column access for team connections
-    let allowedSearchColumns = searchColumns;
+    let allowedSearchColumns = columnValidation.validColumnNames;
     if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
-      const allowedTables = filterAllowedTables([table], permission);
+      const allowedTables = filterAllowedTables([validatedTableName], permission);
       
       if (allowedTables.length === 0) {
         return NextResponse.json(
@@ -91,7 +118,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
 
       // Filter search columns to only allowed ones
-      allowedSearchColumns = filterAllowedColumns(table, searchColumns, permission);
+      allowedSearchColumns = filterAllowedColumns(validatedTableName, allowedSearchColumns, permission);
       
       if (allowedSearchColumns.length === 0) {
         return NextResponse.json(
@@ -101,24 +128,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Sanitize table and column names (only allow alphanumeric and underscore)
-    const safeTable = table.replace(/[^a-zA-Z0-9_]/g, '');
-    const safeColumns = allowedSearchColumns.map(col => col.replace(/[^a-zA-Z0-9_]/g, ''));
-    
-    // Validate columns aren't empty after sanitization
-    const validColumns = safeColumns.filter(col => col.length > 0);
-    if (validColumns.length === 0) {
-      return NextResponse.json(
-        { error: 'Invalid column names' },
-        { status: 400 }
-      );
-    }
+    // Use validated column names (they've been checked against schema)
+    const validColumns = allowedSearchColumns;
 
     // Build the search query based on database type
     const searchTerm = `%${search.trim()}%`;
+    const dbType = connection.type as DatabaseType;
     const { sql, params: queryParams } = buildSearchQuery(
-      connection.type,
-      safeTable,
+      dbType,
+      validatedTableName,
       validColumns,
       searchTerm,
       limit,
@@ -131,7 +149,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (teamId && result.columns && result.columns.length > 0) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
       const columnNames = result.columns.map(c => c.name);
-      const filteredColumnNames = filterAllowedColumns(table, columnNames, permission);
+      const filteredColumnNames = filterAllowedColumns(validatedTableName, columnNames, permission);
       
       result.columns = result.columns.filter(c => filteredColumnNames.includes(c.name));
       result.rows = result.rows.map(row => {
@@ -169,22 +187,25 @@ interface SearchQueryResult {
 }
 
 function buildSearchQuery(
-  dbType: string,
+  dbType: DatabaseType,
   table: string,
   columns: string[],
   searchTerm: string,
   limit: number,
   offset: number
 ): SearchQueryResult {
+  // Use proper identifier quoting
+  const quotedTable = quoteIdentifier(table, dbType);
+  
   switch (dbType) {
     case 'postgresql': {
       // PostgreSQL uses $1, $2, etc. for parameters and ILIKE for case-insensitive
       const conditions = columns.map((col, i) => 
-        `CAST("${col}" AS TEXT) ILIKE $${i + 1}`
+        `CAST(${quoteIdentifier(col, dbType)} AS TEXT) ILIKE $${i + 1}`
       ).join(' OR ');
       
       const paramIndex = columns.length;
-      const sql = `SELECT * FROM "${table}" WHERE ${conditions} LIMIT $${paramIndex + 1} OFFSET $${paramIndex + 2}`;
+      const sql = `SELECT * FROM ${quotedTable} WHERE ${conditions} LIMIT $${paramIndex + 1} OFFSET $${paramIndex + 2}`;
       const params = [...columns.map(() => searchTerm), limit, offset];
       
       return { sql, params };
@@ -194,10 +215,10 @@ function buildSearchQuery(
     case 'mariadb': {
       // MySQL uses ? for parameters and LIKE (case-insensitive by default with utf8)
       const conditions = columns.map(col => 
-        `CAST(\`${col}\` AS CHAR) LIKE ?`
+        `CAST(${quoteIdentifier(col, dbType)} AS CHAR) LIKE ?`
       ).join(' OR ');
       
-      const sql = `SELECT * FROM \`${table}\` WHERE ${conditions} LIMIT ? OFFSET ?`;
+      const sql = `SELECT * FROM ${quotedTable} WHERE ${conditions} LIMIT ? OFFSET ?`;
       const params = [...columns.map(() => searchTerm), limit, offset];
       
       return { sql, params };
@@ -206,10 +227,10 @@ function buildSearchQuery(
     case 'sqlite': {
       // SQLite uses ? for parameters and LIKE (case-insensitive for ASCII)
       const conditions = columns.map(col => 
-        `CAST("${col}" AS TEXT) LIKE ?`
+        `CAST(${quoteIdentifier(col, dbType)} AS TEXT) LIKE ?`
       ).join(' OR ');
       
-      const sql = `SELECT * FROM "${table}" WHERE ${conditions} LIMIT ? OFFSET ?`;
+      const sql = `SELECT * FROM ${quotedTable} WHERE ${conditions} LIMIT ? OFFSET ?`;
       const params = [...columns.map(() => searchTerm), limit, offset];
       
       return { sql, params };

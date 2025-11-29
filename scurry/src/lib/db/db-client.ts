@@ -375,6 +375,22 @@ function initializeSqliteSchema(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id);
     CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id);
     CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id);
+    
+    CREATE TABLE IF NOT EXISTS mcp_api_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      key_hash TEXT UNIQUE NOT NULL,
+      key_prefix TEXT NOT NULL,
+      permissions TEXT DEFAULT '["read"]',
+      created_at TEXT NOT NULL,
+      expires_at TEXT,
+      last_used_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_user_id ON mcp_api_keys(user_id);
+    CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_key_hash ON mcp_api_keys(key_hash);
   `);
 }
 
@@ -392,6 +408,21 @@ function migrateSqliteSchema(database: Database.Database) {
       database.exec("CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id)");
     }
   }
+  
+  // PERF-010: Add additional performance indexes for common query patterns
+  database.exec(`
+    -- Composite index for activities sorted by team and created_at (common dashboard query)
+    CREATE INDEX IF NOT EXISTS idx_activities_team_created ON activities(team_id, created_at DESC);
+    
+    -- Composite index for saved queries by team and user (common lookup pattern)
+    CREATE INDEX IF NOT EXISTS idx_saved_queries_team_user ON saved_queries(team_id, user_id);
+    
+    -- Index for expired MCP API keys cleanup
+    CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_expires ON mcp_api_keys(expires_at);
+    
+    -- Index for schema cache expiry queries
+    CREATE INDEX IF NOT EXISTS idx_schema_cache_connection_expires ON schema_cache(connection_id, expires_at);
+  `);
 }
 
 async function initializeTursoSchema(client: TursoClient): Promise<void> {
@@ -672,6 +703,20 @@ function getSqliteSchemaStatements(): string[] {
     `CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id)`,
     `CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id)`,
+    `CREATE TABLE IF NOT EXISTS mcp_api_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      key_hash TEXT UNIQUE NOT NULL,
+      key_prefix TEXT NOT NULL,
+      permissions TEXT DEFAULT '["read"]',
+      created_at TEXT NOT NULL,
+      expires_at TEXT,
+      last_used_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_user_id ON mcp_api_keys(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_key_hash ON mcp_api_keys(key_hash)`,
   ];
 }
 

@@ -5,6 +5,8 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { validateConnectionAccess } from '@/lib/db/teams';
 import { getEffectivePermissions } from '@/lib/db/permissions';
 import { filterAllowedTables, filterAllowedColumns } from '@/lib/permissions/validator';
+import { fetchTables } from '@/lib/db/schema-fetcher';
+import { quoteIdentifier, validateTableExists, type DatabaseType } from '@/lib/db/sql-utils';
 
 type RouteParams = { params: Promise<{ table: string }> };
 
@@ -51,11 +53,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Validate table exists in schema to prevent SQL injection
+    const tables = await fetchTables(connection);
+    const tableValidation = validateTableExists(table, tables);
+    
+    if (!tableValidation.valid || !tableValidation.actualName) {
+      return NextResponse.json(
+        { error: 'Table not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Use the actual table name from schema (preserves correct casing)
+    const validatedTableName = tableValidation.actualName;
+
     // Check table access and get allowed columns if this is a team connection
     let allowedColumns: string[] | null = null;
     if (teamId) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
-      const allowedTables = filterAllowedTables([table], permission);
+      const allowedTables = filterAllowedTables([validatedTableName], permission);
       
       if (allowedTables.length === 0) {
         return NextResponse.json(
@@ -66,16 +82,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
       // Get allowed columns for this table
       // We'll fetch all columns first then filter the result
-      const hiddenColumns = permission?.hiddenColumns.get(table.toLowerCase());
+      const hiddenColumns = permission?.hiddenColumns.get(validatedTableName.toLowerCase());
       if (hiddenColumns && hiddenColumns.size > 0) {
         // We have column restrictions, need to select specific columns
         allowedColumns = []; // Will be populated by result filtering
       }
     }
 
-    // Escape table name to prevent SQL injection (basic escaping)
-    const safeTable = table.replace(/[^a-zA-Z0-9_]/g, '');
-    const sql = `SELECT * FROM ${safeTable} LIMIT ${Math.min(limit, 1000)}`;
+    // Use proper identifier quoting for SQL safety
+    const dbType = connection.type as DatabaseType;
+    const quotedTable = quoteIdentifier(validatedTableName, dbType);
+    const sql = `SELECT * FROM ${quotedTable} LIMIT ${Math.min(limit, 1000)}`;
 
     const result = await executeQuery(connection, sql, Math.min(limit, 1000));
     
@@ -83,7 +100,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (teamId && result.columns && result.columns.length > 0) {
       const permission = await getEffectivePermissions(user.id, teamId, connectionId);
       const columnNames = result.columns.map(c => c.name);
-      const filteredColumnNames = filterAllowedColumns(table, columnNames, permission);
+      const filteredColumnNames = filterAllowedColumns(validatedTableName, columnNames, permission);
       
       // Filter columns and rows
       result.columns = result.columns.filter(c => filteredColumnNames.includes(c.name));
