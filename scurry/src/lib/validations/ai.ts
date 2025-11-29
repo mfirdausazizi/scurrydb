@@ -17,6 +17,7 @@ export const aiChatSchema = z.object({
   message: z.string().min(1, 'Message is required'),
   connectionId: z.string().optional(),
   conversationId: z.string().optional(),
+  teamId: z.string().optional().nullable(), // Workspace context
 });
 
 export type AIChatFormData = z.infer<typeof aiChatSchema>;

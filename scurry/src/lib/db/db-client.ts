@@ -131,9 +131,27 @@ function initializeSqliteSchema(database: Database.Database) {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
-    
+
+    CREATE TABLE IF NOT EXISTS team_ai_settings (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_ai_settings_team_id ON team_ai_settings(team_id);
+
     CREATE TABLE IF NOT EXISTS ai_conversations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -444,6 +462,22 @@ function getSqliteSchemaStatements(): string[] {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
     `CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id)`,
+    `CREATE TABLE IF NOT EXISTS team_ai_settings (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_team_ai_settings_team_id ON team_ai_settings(team_id)`,
     `CREATE TABLE IF NOT EXISTS ai_conversations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -697,7 +731,23 @@ function getPostgresSchema(): string {
     );
     
     CREATE INDEX IF NOT EXISTS idx_ai_settings_user_id ON ai_settings(user_id);
-    
+
+    CREATE TABLE IF NOT EXISTS team_ai_settings (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL UNIQUE REFERENCES teams(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'openai',
+      api_key TEXT,
+      model TEXT,
+      temperature REAL DEFAULT 0.7,
+      max_tokens INTEGER DEFAULT 2048,
+      base_url TEXT,
+      created_by TEXT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_ai_settings_team_id ON team_ai_settings(team_id);
+
     CREATE TABLE IF NOT EXISTS ai_conversations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -706,7 +756,7 @@ function getPostgresSchema(): string {
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_conversations_user_connection ON ai_conversations(user_id, connection_id);
 

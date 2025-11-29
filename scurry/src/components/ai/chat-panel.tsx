@@ -27,11 +27,12 @@ interface Message {
 
 interface ChatPanelProps {
   connectionId?: string;
+  teamId?: string | null;
   onInsertSQL?: (sql: string) => void;
   className?: string;
 }
 
-export function ChatPanel({ connectionId, onInsertSQL, className }: ChatPanelProps) {
+export function ChatPanel({ connectionId, teamId, onInsertSQL, className }: ChatPanelProps) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
@@ -197,6 +198,7 @@ export function ChatPanel({ connectionId, onInsertSQL, className }: ChatPanelPro
         body: JSON.stringify({
           message: userMessage.content,
           connectionId,
+          teamId: teamId || null,
         }),
       });
 

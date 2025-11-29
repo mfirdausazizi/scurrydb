@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Mail, Trash2, Shield, Crown, Eye, UserPlus, Loader2, Lock, Settings, Plus } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ArrowLeft, Users, Mail, Trash2, Shield, Crown, Eye, UserPlus, Loader2, Lock, Settings, Plus, Bot, Key, Check } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,11 +29,26 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { ProfileList } from '@/components/permissions/profile-list';
 import { MemberAssignments } from '@/components/permissions/member-assignments';
 import { CreateProfileDialog } from '@/components/permissions/create-profile-dialog';
+import {
+  aiSettingsSchema,
+  aiProviders,
+  modelOptions,
+  type AISettingsFormData,
+} from '@/lib/validations/ai';
 
 interface Team {
   id: string;
@@ -91,10 +108,77 @@ export default function TeamSettingsPage() {
   const [inviting, setInviting] = React.useState(false);
   const [createProfileDialogOpen, setCreateProfileDialogOpen] = React.useState(false);
   const [profileListKey, setProfileListKey] = React.useState(0);
+  const [aiLoading, setAiLoading] = React.useState(true);
+  const [aiSaving, setAiSaving] = React.useState(false);
+  const [aiConfigured, setAiConfigured] = React.useState(false);
+
+  const aiForm = useForm<AISettingsFormData>({
+    resolver: zodResolver(aiSettingsSchema),
+    defaultValues: {
+      provider: 'openai',
+      apiKey: '',
+      model: '',
+      temperature: 0.7,
+      maxTokens: 2048,
+      baseUrl: '',
+    },
+  });
+
+  const watchedProvider = aiForm.watch('provider');
 
   React.useEffect(() => {
     fetchTeamData();
+    fetchAISettings();
   }, [teamId]);
+
+  const fetchAISettings = async () => {
+    setAiLoading(true);
+    try {
+      const response = await fetch(`/api/teams/${teamId}/ai-settings`);
+      if (response.ok) {
+        const data = await response.json();
+        setAiConfigured(data.configured);
+        if (data.configured) {
+          aiForm.reset({
+            provider: data.provider || 'openai',
+            apiKey: '', // Don't populate API key for security
+            model: data.model || '',
+            temperature: data.temperature || 0.7,
+            maxTokens: data.maxTokens || 2048,
+            baseUrl: data.baseUrl || '',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load AI settings:', error);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSaveAISettings = async (data: AISettingsFormData) => {
+    setAiSaving(true);
+    try {
+      const response = await fetch(`/api/teams/${teamId}/ai-settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save AI settings');
+      }
+
+      setAiConfigured(true);
+      toast.success('AI settings saved successfully');
+      aiForm.setValue('apiKey', ''); // Clear API key field after save
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save AI settings');
+    } finally {
+      setAiSaving(false);
+    }
+  };
 
   const fetchTeamData = async () => {
     try {
@@ -294,6 +378,10 @@ export default function TeamSettingsPage() {
             <Settings className="h-4 w-4" />
             General
           </TabsTrigger>
+          <TabsTrigger value="ai" className="gap-2">
+            <Bot className="h-4 w-4" />
+            AI
+          </TabsTrigger>
           <TabsTrigger value="permissions" className="gap-2">
             <Lock className="h-4 w-4" />
             Permissions
@@ -490,6 +578,241 @@ export default function TeamSettingsPage() {
                   </AlertDialogContent>
                 </AlertDialog>
               </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* AI Settings Tab */}
+        <TabsContent value="ai" className="space-y-6">
+          {!canManage && (
+            <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950">
+              <CardHeader>
+                <CardTitle className="text-sm">View Only</CardTitle>
+                <CardDescription>
+                  You can view AI settings but cannot make changes. Contact a team owner or admin to configure AI.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-primary" />
+                <CardTitle>Workspace AI Configuration</CardTitle>
+              </div>
+              <CardDescription>
+                Configure AI settings for this workspace. These settings will be used by all team members when using AI features within this workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {aiLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <Form {...aiForm}>
+                  <form onSubmit={aiForm.handleSubmit(handleSaveAISettings)} className="space-y-6">
+                    <FormField
+                      control={aiForm.control}
+                      name="provider"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>AI Provider</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange} disabled={!canManage}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select provider" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {aiProviders.map((provider) => (
+                                <SelectItem key={provider} value={provider}>
+                                  {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Choose your AI provider. Ollama runs locally for free.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {watchedProvider !== 'ollama' && (
+                      <FormField
+                        control={aiForm.control}
+                        name="apiKey"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center gap-2">
+                              <Key className="h-4 w-4" />
+                              API Key
+                              {aiConfigured && (
+                                <Badge variant="secondary" className="text-xs">Configured</Badge>
+                              )}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder={aiConfigured ? 'Leave blank to keep existing key' : 'Enter your API key'}
+                                {...field}
+                                value={field.value || ''}
+                                disabled={!canManage}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Your API key is encrypted and stored securely. Leave blank to keep existing key.
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {(watchedProvider === 'ollama' || watchedProvider === 'custom') && (
+                      <FormField
+                        control={aiForm.control}
+                        name="baseUrl"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Base URL</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={watchedProvider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com'}
+                                {...field}
+                                value={field.value || ''}
+                                disabled={!canManage}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {watchedProvider === 'ollama'
+                                ? 'URL of your Ollama server (default: http://localhost:11434)'
+                                : 'Base URL for your custom API endpoint'
+                              }
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    <FormField
+                      control={aiForm.control}
+                      name="model"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Model</FormLabel>
+                          {modelOptions[watchedProvider]?.length > 0 ? (
+                            <Select value={field.value || ''} onValueChange={field.onChange} disabled={!canManage}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select model" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {modelOptions[watchedProvider].map((model) => (
+                                  <SelectItem key={model.value} value={model.value}>
+                                    {model.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <FormControl>
+                              <Input
+                                placeholder="Enter model name"
+                                {...field}
+                                value={field.value || ''}
+                                disabled={!canManage}
+                              />
+                            </FormControl>
+                          )}
+                          <FormDescription>
+                            The AI model to use for queries. Different models have different capabilities.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={aiForm.control}
+                        name="temperature"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Temperature</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="2"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                                disabled={!canManage}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              0 = deterministic, 2 = creative
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={aiForm.control}
+                        name="maxTokens"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Max Tokens</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="100"
+                                max="128000"
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value))}
+                                disabled={!canManage}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Maximum response length
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {canManage && (
+                      <Button type="submit" disabled={aiSaving}>
+                        {aiSaving ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="mr-2 h-4 w-4" />
+                        )}
+                        Save AI Settings
+                      </Button>
+                    )}
+                  </form>
+                </Form>
+              )}
+            </CardContent>
+          </Card>
+
+          {!aiConfigured && canManage && (
+            <Card className="border-dashed">
+              <CardHeader>
+                <CardTitle className="text-sm text-muted-foreground">Not Configured</CardTitle>
+                <CardDescription>
+                  AI is not yet configured for this workspace. Configure AI settings above to enable natural language queries and database analysis for your team.
+                </CardDescription>
+              </CardHeader>
             </Card>
           )}
         </TabsContent>

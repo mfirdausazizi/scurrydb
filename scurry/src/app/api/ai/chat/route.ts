@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { streamText, type CoreMessage } from 'ai';
 import { getCurrentUser } from '@/lib/auth/session';
 import {
-  getAISettings,
+  getEffectiveAISettings,
   getConnectionById,
   getSchemaCache,
   saveSchemaCache,
@@ -11,6 +11,7 @@ import {
   addMessage,
   type EnrichedSchema,
 } from '@/lib/db/app-db';
+import { validateConnectionAccess } from '@/lib/db/teams';
 import { getAIModel, getSystemPromptForSQL } from '@/lib/ai/providers';
 import {
   fetchTables,
@@ -44,13 +45,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { message, connectionId } = validationResult.data;
+    const { message, connectionId, teamId } = validationResult.data;
 
-    // Get AI settings
-    const settings = await getAISettings(user.id);
+    // Get effective AI settings based on context (workspace vs personal)
+    const settings = await getEffectiveAISettings(user.id, teamId || null);
     if (!settings) {
+      const errorMessage = teamId
+        ? 'AI not configured for this workspace. Please ask a team admin to configure AI settings.'
+        : 'AI not configured. Please configure AI settings first.';
       return new Response(
-        JSON.stringify({ error: 'AI not configured. Please configure AI settings first.' }),
+        JSON.stringify({ error: errorMessage }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }

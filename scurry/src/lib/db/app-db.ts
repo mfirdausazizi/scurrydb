@@ -383,6 +383,131 @@ export async function deleteAISettings(userId: string): Promise<boolean> {
   return result.changes > 0;
 }
 
+// Team AI Settings types and functions
+export interface TeamAISettings {
+  id: string;
+  teamId: string;
+  provider: AIProvider;
+  apiKey: string | null;
+  model: string | null;
+  temperature: number;
+  maxTokens: number;
+  baseUrl: string | null;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+function rowToTeamAISettings(row: DbRow): TeamAISettings {
+  return {
+    id: row.id as string,
+    teamId: row.team_id as string,
+    provider: row.provider as AIProvider,
+    apiKey: row.api_key ? decrypt(row.api_key as string) : null,
+    model: row.model as string | null,
+    temperature: row.temperature as number,
+    maxTokens: row.max_tokens as number,
+    baseUrl: row.base_url as string | null,
+    createdBy: row.created_by as string,
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  };
+}
+
+export async function getTeamAISettings(teamId: string): Promise<TeamAISettings | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM team_ai_settings WHERE team_id = ?', [teamId]);
+  return row ? rowToTeamAISettings(row) : null;
+}
+
+export async function saveTeamAISettings(
+  teamId: string,
+  userId: string,
+  settings: {
+    provider: AIProvider;
+    apiKey?: string | null;
+    model?: string | null;
+    temperature?: number;
+    maxTokens?: number;
+    baseUrl?: string | null;
+  }
+): Promise<TeamAISettings> {
+  const client = getDbClient();
+  const now = new Date().toISOString();
+  const existing = await getTeamAISettings(teamId);
+
+  if (existing) {
+    const fields: string[] = ['updated_at = ?', 'provider = ?'];
+    const values: unknown[] = [now, settings.provider];
+
+    if (settings.apiKey !== undefined) {
+      fields.push('api_key = ?');
+      values.push(settings.apiKey ? encrypt(settings.apiKey) : null);
+    }
+    if (settings.model !== undefined) {
+      fields.push('model = ?');
+      values.push(settings.model);
+    }
+    if (settings.temperature !== undefined) {
+      fields.push('temperature = ?');
+      values.push(settings.temperature);
+    }
+    if (settings.maxTokens !== undefined) {
+      fields.push('max_tokens = ?');
+      values.push(settings.maxTokens);
+    }
+    if (settings.baseUrl !== undefined) {
+      fields.push('base_url = ?');
+      values.push(settings.baseUrl);
+    }
+
+    values.push(teamId);
+    await client.execute(`UPDATE team_ai_settings SET ${fields.join(', ')} WHERE team_id = ?`, values);
+  } else {
+    const id = uuidv4();
+    await client.execute(
+      `INSERT INTO team_ai_settings (id, team_id, provider, api_key, model, temperature, max_tokens, base_url, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        teamId,
+        settings.provider,
+        settings.apiKey ? encrypt(settings.apiKey) : null,
+        settings.model || null,
+        settings.temperature ?? 0.7,
+        settings.maxTokens ?? 2048,
+        settings.baseUrl || null,
+        userId,
+        now,
+        now
+      ]
+    );
+  }
+
+  const result = await getTeamAISettings(teamId);
+  if (!result) throw new Error('Failed to save team AI settings');
+  return result;
+}
+
+export async function deleteTeamAISettings(teamId: string): Promise<boolean> {
+  const client = getDbClient();
+  const result = await client.execute('DELETE FROM team_ai_settings WHERE team_id = ?', [teamId]);
+  return result.changes > 0;
+}
+
+// Get effective AI settings based on context (workspace vs personal)
+export async function getEffectiveAISettings(
+  userId: string,
+  teamId: string | null
+): Promise<AISettings | TeamAISettings | null> {
+  if (teamId) {
+    // In workspace context, only use team settings
+    return getTeamAISettings(teamId);
+  }
+  // In personal context, use user settings
+  return getAISettings(userId);
+}
+
 // Schema Cache types and functions
 export interface SchemaCache {
   id: string;
