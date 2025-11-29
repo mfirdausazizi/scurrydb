@@ -2,18 +2,12 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Database, Loader2, AlertTriangle, Table2, Users } from 'lucide-react';
+import { Database, Loader2, AlertTriangle, Table2, Users, PanelLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+
 import {
   Sheet,
   SheetContent,
@@ -43,6 +37,7 @@ function BrowsePageContent() {
   const [previewLoading, setPreviewLoading] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarWidth, setSidebarWidth] = React.useState<number | null>(null); // null during SSR to avoid hydration mismatch
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
   const [isResizing, setIsResizing] = React.useState(false);
   const sidebarRef = React.useRef<HTMLDivElement>(null);
 
@@ -221,11 +216,19 @@ function BrowsePageContent() {
     }
   }, [selectedTable, fetchTableStructure]);
 
+  // Sync connection selection with URL parameter (set by header ConnectionSwitcher)
   React.useEffect(() => {
-    if (!selectedConnectionId && connections.length > 0) {
+    const connectionFromUrl = searchParams.get('connection');
+    if (connectionFromUrl && connections.some(c => c.id === connectionFromUrl)) {
+      // URL has a valid connection, sync state with it
+      if (selectedConnectionId !== connectionFromUrl) {
+        setSelectedConnectionId(connectionFromUrl);
+      }
+    } else if (!connectionFromUrl && connections.length > 0 && !selectedConnectionId) {
+      // No connection in URL and no selection, auto-select first one
       setSelectedConnectionId(connections[0].id);
     }
-  }, [connections, selectedConnectionId]);
+  }, [connections, searchParams, selectedConnectionId]);
 
   const handleSelectTable = React.useCallback((tableName: string) => {
     setSelectedTable(tableName);
@@ -289,24 +292,6 @@ function BrowsePageContent() {
             Explore your database schema and data.
           </p>
         </div>
-        <Select value={selectedConnectionId || ''} onValueChange={setSelectedConnectionId}>
-          <SelectTrigger className="w-full sm:w-[200px] md:w-[250px] flex-shrink-0">
-            <SelectValue placeholder="Select connection" />
-          </SelectTrigger>
-          <SelectContent>
-            {connections.map((conn) => (
-              <SelectItem key={conn.id} value={conn.id}>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-2 w-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: conn.color || '#8B5A2B' }}
-                  />
-                  <span className="truncate">{conn.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Mobile Schema Tree Sheet */}
@@ -337,11 +322,26 @@ function BrowsePageContent() {
       </Button>
 
       <div className="flex-1 flex min-h-0 overflow-hidden rounded-lg border bg-card">
+        {/* Collapsed Sidebar Expand Button */}
+        {isSidebarCollapsed && (
+          <div className="hidden md:flex flex-col items-center border-r py-2 px-1 flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsSidebarCollapsed(false)}
+              title="Expand sidebar"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Desktop Sidebar */}
         <div 
           ref={sidebarRef}
-          className="hidden md:flex flex-col border-r flex-shrink-0 overflow-hidden"
-          style={{ width: sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH }}
+          className="hidden md:flex flex-col border-r flex-shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out"
+          style={{ width: isSidebarCollapsed ? 0 : (sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH) }}
         >
           <SchemaTree
             tables={tables}
@@ -349,16 +349,19 @@ function BrowsePageContent() {
             selectedTable={selectedTable}
             onSelectTable={setSelectedTable}
             onRefresh={fetchTables}
+            onCollapse={() => setIsSidebarCollapsed(true)}
           />
         </div>
 
         {/* Resize Handle */}
-        <div
-          className="hidden md:flex items-center justify-center w-1 hover:w-1.5 bg-transparent hover:bg-primary/20 cursor-col-resize transition-all flex-shrink-0 group"
-          onMouseDown={handleResizeStart}
-        >
-          <div className="h-8 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
-        </div>
+        {!isSidebarCollapsed && (
+          <div
+            className="hidden md:flex items-center justify-center w-1 hover:w-1.5 bg-transparent hover:bg-primary/20 cursor-col-resize transition-all flex-shrink-0 group"
+            onMouseDown={handleResizeStart}
+          >
+            <div className="h-8 w-1 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
+          </div>
+        )}
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex-1 flex flex-col p-3 md:p-4 min-w-0 overflow-hidden">
@@ -371,6 +374,7 @@ function BrowsePageContent() {
                 loading={structureLoading}
                 previewLoading={previewLoading}
                 connectionId={selectedConnectionId}
+                teamId={effectiveTeamId}
                 onLoadPreview={fetchPreview}
                 onRefreshPreview={fetchPreview}
               />

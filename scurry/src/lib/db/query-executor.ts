@@ -37,6 +37,43 @@ export async function executeQuery(
   }
 }
 
+/**
+ * Execute a parameterized query for safe searching
+ * This version accepts parameters to prevent SQL injection
+ */
+export async function executeQueryWithParams(
+  connection: DatabaseConnection,
+  sql: string,
+  params: unknown[],
+  limit?: number
+): Promise<QueryResult> {
+  const startTime = Date.now();
+  const effectiveLimit = Math.min(limit || MAX_ROWS, MAX_ROWS);
+
+  try {
+    switch (connection.type) {
+      case 'mysql':
+      case 'mariadb':
+        return await executeMySqlQueryWithParams(connection, sql, params, effectiveLimit, startTime);
+      case 'postgresql':
+        return await executePostgresQueryWithParams(connection, sql, params, effectiveLimit, startTime);
+      case 'sqlite':
+        return executeSqliteQueryWithParams(connection, sql, params, effectiveLimit, startTime);
+      default:
+        throw new Error(`Unsupported database type: ${connection.type}`);
+    }
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      executionTime,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 async function executeMySqlQuery(
   connection: DatabaseConnection,
   sql: string,
@@ -179,6 +216,140 @@ function executeSqliteQuery(
         executionTime,
       };
     }
+  } finally {
+    db.close();
+  }
+}
+
+// Parameterized query functions for safe search operations
+
+async function executeMySqlQueryWithParams(
+  connection: DatabaseConnection,
+  sql: string,
+  params: unknown[],
+  limit: number,
+  startTime: number
+): Promise<QueryResult> {
+  const conn = await mysql.createConnection({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? {} : undefined,
+  });
+
+  try {
+    const [rows, fields] = await conn.execute(sql, params);
+    const executionTime = Date.now() - startTime;
+
+    if (!Array.isArray(rows)) {
+      const result = rows as mysql.ResultSetHeader;
+      return {
+        columns: [{ name: 'affected_rows', type: 'number', nullable: false }],
+        rows: [{ affected_rows: result.affectedRows }],
+        rowCount: 1,
+        executionTime,
+      };
+    }
+
+    const columns: ColumnInfo[] = (fields as mysql.FieldPacket[]).map((field) => ({
+      name: field.name,
+      type: String(field.type),
+      nullable: (Number(field.flags ?? 0) & 1) === 0,
+    }));
+
+    const limitedRows = (rows as Record<string, unknown>[]).slice(0, limit);
+
+    return {
+      columns,
+      rows: limitedRows,
+      rowCount: rows.length,
+      executionTime,
+    };
+  } finally {
+    await conn.end();
+  }
+}
+
+async function executePostgresQueryWithParams(
+  connection: DatabaseConnection,
+  sql: string,
+  params: unknown[],
+  limit: number,
+  startTime: number
+): Promise<QueryResult> {
+  const client = new Client({
+    host: connection.host,
+    port: connection.port,
+    user: connection.username,
+    password: connection.password,
+    database: connection.database,
+    ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+
+  await client.connect();
+
+  try {
+    const result = await client.query(sql, params);
+    const executionTime = Date.now() - startTime;
+
+    if (result.command !== 'SELECT') {
+      return {
+        columns: [{ name: 'affected_rows', type: 'number', nullable: false }],
+        rows: [{ affected_rows: result.rowCount || 0 }],
+        rowCount: 1,
+        executionTime,
+      };
+    }
+
+    const columns: ColumnInfo[] = result.fields.map((field) => ({
+      name: field.name,
+      type: String(field.dataTypeID),
+      nullable: true,
+    }));
+
+    const limitedRows = result.rows.slice(0, limit);
+
+    return {
+      columns,
+      rows: limitedRows,
+      rowCount: result.rowCount || 0,
+      executionTime,
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+function executeSqliteQueryWithParams(
+  connection: DatabaseConnection,
+  sql: string,
+  params: unknown[],
+  limit: number,
+  startTime: number
+): QueryResult {
+  const db = new Database(connection.database);
+  
+  try {
+    const stmt = db.prepare(sql);
+    const rows = stmt.all(...params) as Record<string, unknown>[];
+    const executionTime = Date.now() - startTime;
+    
+    const columns: ColumnInfo[] = stmt.columns().map((col) => ({
+      name: col.name,
+      type: col.type || 'unknown',
+      nullable: true,
+    }));
+    
+    const limitedRows = rows.slice(0, limit);
+    
+    return {
+      columns,
+      rows: limitedRows,
+      rowCount: rows.length,
+      executionTime,
+    };
   } finally {
     db.close();
   }

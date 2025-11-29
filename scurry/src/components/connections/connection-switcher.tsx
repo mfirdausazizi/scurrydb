@@ -11,8 +11,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useConnections } from '@/hooks';
-import { useWorkspaceStore } from '@/lib/store/workspace-store';
+import { useConnections, useWorkspaceContext } from '@/hooks';
 import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
@@ -29,7 +28,7 @@ export function ConnectionSwitcher({ className, autoNavigate = false, onSelect }
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const currentConnectionId = searchParams.get('connection');
-    const { activeTeamId } = useWorkspaceStore();
+    const { teamId: activeTeamId } = useWorkspaceContext();
     const { connections, loading } = useConnections({ teamId: activeTeamId });
 
     const activeConnection = connections.find(c => c.id === currentConnectionId);

@@ -768,6 +768,9 @@ export async function clearAllUserConversations(userId: string): Promise<number>
   // Delete all conversations
   const result = await client.execute('DELETE FROM ai_conversations WHERE user_id = ?', [userId]);
 
+  return result.changes;
+}
+
 // Password Reset Token types
 export interface PasswordResetToken {
   id: string;

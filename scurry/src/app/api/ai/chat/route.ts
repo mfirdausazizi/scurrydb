@@ -161,7 +161,7 @@ async function fetchEnrichedSchema(connection: Parameters<typeof fetchTables>[0]
           nullable: col.nullable,
           isPrimaryKey: col.isPrimaryKey,
           isForeignKey: col.isForeignKey || fkMap.has(col.name),
-          autoIncrement: col.autoIncrement,
+          autoIncrement: col.autoIncrement ?? false,
           defaultValue: col.defaultValue,
           references: fkMap.get(col.name) || col.references,
         })),

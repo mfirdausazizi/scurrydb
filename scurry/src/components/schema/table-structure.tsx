@@ -36,6 +36,7 @@ import type {
   DataChangeLog,
   PendingChanges,
 } from '@/types';
+import type { ServerSearchParams } from './schema-filter';
 
 interface TableStructureProps {
   tableName: string;
@@ -45,6 +46,7 @@ interface TableStructureProps {
   loading: boolean;
   previewLoading: boolean;
   connectionId: string | null;
+  teamId?: string | null;
   onLoadPreview: () => void;
   onRefreshPreview: () => void;
 }
@@ -57,6 +59,7 @@ export function TableStructure({
   loading,
   previewLoading,
   connectionId,
+  teamId,
   onLoadPreview,
   onRefreshPreview,
 }: TableStructureProps) {
@@ -66,6 +69,11 @@ export function TableStructure({
   const [historyLoading, setHistoryLoading] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [rowsPerPage, setRowsPerPage] = React.useState(25);
+  
+  // Server-side search state
+  const [searchResults, setSearchResults] = React.useState<QueryResult | null>(null);
+  const [isSearching, setIsSearching] = React.useState(false);
+  const [activeSearchParams, setActiveSearchParams] = React.useState<ServerSearchParams | null>(null);
 
   // Get store key for current table
   const storeKey = connectionId ? getStoreKey(connectionId, tableName) : null;
@@ -87,25 +95,36 @@ export function TableStructure({
   // Get current pending changes (use stable empty reference if none)
   const pendingChanges: PendingChanges = tableChangesEntry?.changes ?? emptyChanges;
 
+  // Determine which data to display (search results or preview)
+  const displayData = searchResults ?? preview;
+  const isServerSearchActive = searchResults !== null;
+  
   // Pagination calculations
-  const totalRows = preview?.rows.length ?? 0;
+  const totalRows = displayData?.rows.length ?? 0;
   const totalPages = Math.ceil(totalRows / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = Math.min(startIndex + rowsPerPage, totalRows);
   
   // Create paginated result for display
   const paginatedPreview = React.useMemo(() => {
-    if (!preview) return null;
+    if (!displayData) return null;
     return {
-      ...preview,
-      rows: preview.rows.slice(startIndex, endIndex),
+      ...displayData,
+      rows: displayData.rows.slice(startIndex, endIndex),
     };
-  }, [preview, startIndex, endIndex]);
+  }, [displayData, startIndex, endIndex]);
 
   // Reset to page 1 when table changes or rows per page changes
   React.useEffect(() => {
     setCurrentPage(1);
   }, [tableName, rowsPerPage]);
+
+  // Reset search state when table changes
+  React.useEffect(() => {
+    setSearchResults(null);
+    setActiveSearchParams(null);
+    setIsSearching(false);
+  }, [tableName]);
 
   // Load preview immediately when component mounts or when switching to data tab
   React.useEffect(() => {
@@ -113,6 +132,56 @@ export function TableStructure({
       onLoadPreview();
     }
   }, [preview, previewLoading, onLoadPreview]);
+
+  // Handle server-side search
+  const handleServerSearch = React.useCallback(async (params: ServerSearchParams | null) => {
+    setActiveSearchParams(params);
+    
+    // If clearing search, reset to normal preview
+    if (!params) {
+      setSearchResults(null);
+      setIsSearching(false);
+      setCurrentPage(1);
+      return;
+    }
+
+    if (!connectionId) return;
+
+    setIsSearching(true);
+    setCurrentPage(1);
+    
+    try {
+      const searchUrl = new URL(`/api/schema/tables/${encodeURIComponent(tableName)}/search`, window.location.origin);
+      searchUrl.searchParams.set('connectionId', connectionId);
+      searchUrl.searchParams.set('search', params.searchTerm);
+      searchUrl.searchParams.set('limit', '500'); // Get more results for search
+      if (teamId) {
+        searchUrl.searchParams.set('teamId', teamId);
+      }
+      // Add each column
+      params.searchColumns.forEach(col => {
+        searchUrl.searchParams.append('columns', col);
+      });
+
+      const response = await fetch(searchUrl.toString());
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Search failed');
+      }
+
+      const result = await response.json();
+      setSearchResults(result);
+    } catch (error) {
+      console.error('Search failed:', error);
+      toast.error('Search failed', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+      setSearchResults(null);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [connectionId, tableName, teamId]);
 
   // Copy handlers
   const handleCopyColumns = React.useCallback(async () => {
@@ -140,10 +209,10 @@ export function TableStructure({
   }, [indexes]);
 
   const handleCopyPreview = React.useCallback(async () => {
-    if (!preview || preview.rows.length === 0) return;
-    await navigator.clipboard.writeText(JSON.stringify(preview.rows, null, 2));
-    toast.success(`${preview.rows.length} rows copied to clipboard`);
-  }, [preview]);
+    if (!displayData || displayData.rows.length === 0) return;
+    await navigator.clipboard.writeText(JSON.stringify(displayData.rows, null, 2));
+    toast.success(`${displayData.rows.length} ${isServerSearchActive ? 'search results' : 'rows'} copied to clipboard`);
+  }, [displayData, isServerSearchActive]);
 
   const handleChangesUpdate = React.useCallback(
     (changes: PendingChanges) => {
@@ -411,6 +480,27 @@ export function TableStructure({
               </div>
             ) : (
               <>
+                {/* Search indicator */}
+                {isServerSearchActive && activeSearchParams && (
+                  <div className="flex-shrink-0 mb-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800 text-sm flex items-center justify-between">
+                    <span>
+                      Showing search results for &quot;{activeSearchParams.searchTerm}&quot; 
+                      {' '}in {activeSearchParams.searchColumns.length === columns.length 
+                        ? 'all columns' 
+                        : activeSearchParams.searchColumns.join(', ')}
+                      {' '}({totalRows} results)
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={() => handleServerSearch(null)}
+                    >
+                      Clear search
+                    </Button>
+                  </div>
+                )}
+
                 {/* Controls at top - fixed, doesn't scroll */}
                 <div className="flex-shrink-0 mb-3">
                   <PendingChangesPanel
@@ -423,7 +513,7 @@ export function TableStructure({
                     historyLoading={historyLoading}
                     onLoadHistory={handleLoadHistory}
                     primaryKeyColumns={primaryKeyColumns}
-                    previewData={preview.rows as Record<string, unknown>[]}
+                    previewData={displayData?.rows as Record<string, unknown>[] ?? []}
                   />
                 </div>
 
@@ -437,6 +527,9 @@ export function TableStructure({
                       onChangesUpdate={handleChangesUpdate}
                       pendingChanges={pendingChanges}
                       pageOffset={startIndex}
+                      onServerSearch={handleServerSearch}
+                      isSearching={isSearching}
+                      isServerSearchActive={isServerSearchActive}
                     />
                   ) : (
                     <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-800 text-sm">
@@ -457,11 +550,11 @@ export function TableStructure({
       </div>
 
       {/* Pagination Footer - Fixed at bottom, outside scroll area */}
-      {activeTab === 'data' && preview && !preview.error && totalRows > 0 && (
+      {activeTab === 'data' && displayData && !displayData.error && totalRows > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t mt-3 flex-shrink-0">
           {/* Row count on left */}
           <span className="text-sm text-muted-foreground order-2 sm:order-1">
-            Showing {startIndex + 1}-{endIndex} of {totalRows} rows
+            Showing {startIndex + 1}-{endIndex} of {totalRows} {isServerSearchActive ? 'search results' : 'rows'}
           </span>
 
           {/* Pagination controls in center */}
@@ -540,13 +633,13 @@ export function TableStructure({
                     size="sm" 
                     onClick={handleCopyPreview} 
                     className="h-8 gap-1.5"
-                    disabled={!preview || preview.rows.length === 0}
+                    disabled={!displayData || displayData.rows.length === 0}
                   >
                     <Copy className="h-3.5 w-3.5" />
                     <span className="hidden sm:inline">Copy</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Copy all rows as JSON</TooltipContent>
+                <TooltipContent>Copy all {isServerSearchActive ? 'search results' : 'rows'} as JSON</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>

@@ -39,7 +39,7 @@ import type {
   ColumnFilter,
   ColumnDefinition,
 } from '@/types';
-import { SchemaFilter, applyFilters } from '@/components/schema';
+import { SchemaFilter, applyFilters, type ServerSearchParams } from '@/components/schema';
 import { AddRowDialog } from './add-row-dialog';
 import { EditableRowSheet } from './editable-row-sheet';
 import { EditRowDialog } from './edit-row-dialog';
@@ -52,6 +52,10 @@ interface EditableResultsTableProps {
   onChangesUpdate: (changes: PendingChanges) => void;
   pendingChanges: PendingChanges;
   pageOffset?: number;
+  // Server-side search props
+  onServerSearch?: (params: ServerSearchParams | null) => void;
+  isSearching?: boolean;
+  isServerSearchActive?: boolean;
 }
 
 export function EditableResultsTable({
@@ -61,6 +65,9 @@ export function EditableResultsTable({
   onChangesUpdate,
   pendingChanges,
   pageOffset = 0,
+  onServerSearch,
+  isSearching = false,
+  isServerSearchActive = false,
 }: EditableResultsTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [editingCell, setEditingCell] = React.useState<{ rowIndex: number; column: string } | null>(null);
@@ -93,10 +100,16 @@ export function EditableResultsTable({
     return [...result.rows, ...insertedRows];
   }, [result.rows, pendingChanges.inserts]);
 
-  // Apply filters
+  // Apply filters (skip client-side filtering if server search is active)
   const filteredRows = React.useMemo(() => {
-    return applyFilters(allRows, filters);
-  }, [allRows, filters]);
+    // When server search is active, data is already filtered from the API
+    if (isServerSearchActive) {
+      return allRows;
+    }
+    // Only apply client-side filters for advanced filters (non-quicksearch)
+    const clientFilters = filters.filter(f => f.column !== '__quicksearch__');
+    return applyFilters(allRows, clientFilters);
+  }, [allRows, filters, isServerSearchActive]);
 
   // Convert local row index to global row index
   const toGlobalIndex = React.useCallback(
@@ -631,6 +644,8 @@ export function EditableResultsTable({
             columns={columnNames}
             filters={filters}
             onFiltersChange={setFilters}
+            onServerSearch={onServerSearch}
+            isSearching={isSearching}
           />
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowAddDialog(true)} className="gap-1 flex-shrink-0 h-9 touch-target">

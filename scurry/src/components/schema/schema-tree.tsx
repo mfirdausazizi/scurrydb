@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronRight, Table2, Eye, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { ChevronRight, Table2, Eye, Loader2, RefreshCw, Search, X, PanelLeftClose } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ interface SchemaTreeProps {
   selectedTable: string | null;
   onSelectTable: (tableName: string) => void;
   onRefresh: () => void;
+  onCollapse?: () => void;
 }
 
 export const SchemaTree = React.memo(function SchemaTree({
@@ -28,6 +29,7 @@ export const SchemaTree = React.memo(function SchemaTree({
   selectedTable,
   onSelectTable,
   onRefresh,
+  onCollapse,
 }: SchemaTreeProps) {
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     new Set(['tables', 'views'])
@@ -115,9 +117,16 @@ export const SchemaTree = React.memo(function SchemaTree({
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between p-2 border-b">
         <span className="text-sm font-medium">Schema</span>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRefresh}>
-          <RefreshCw className="h-3 w-3" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRefresh} title="Refresh">
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+          {onCollapse && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onCollapse} title="Collapse sidebar">
+              <PanelLeftClose className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="p-2 border-b">

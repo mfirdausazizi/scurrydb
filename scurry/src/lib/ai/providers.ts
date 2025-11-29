@@ -2,7 +2,10 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { type AISettings, type AIProvider } from '@/lib/db/app-db';
 
-export function getAIModel(settings: AISettings) {
+// Type for the subset of settings getAIModel needs (works with both AISettings and TeamAISettings)
+type AIModelSettings = Pick<AISettings, 'provider' | 'apiKey' | 'model' | 'baseUrl'>;
+
+export function getAIModel(settings: AIModelSettings) {
   const { provider, apiKey, model, baseUrl } = settings;
 
   if (!model) {
