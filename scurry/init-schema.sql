@@ -283,3 +283,18 @@ CREATE TABLE IF NOT EXISTS member_permission_assignments (
 CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_team_id ON member_permission_assignments(team_id);
 CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_user_id ON member_permission_assignments(user_id);
 CREATE INDEX IF NOT EXISTS idx_member_permission_assignments_profile_id ON member_permission_assignments(profile_id);
+
+-- Password Reset Tokens
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT UNIQUE NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
