@@ -249,12 +249,13 @@ ScurryDB automatically selects the database based on environment variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ENCRYPTION_KEY` | Yes | — | 32-character key for encrypting connection passwords |
+| `ENCRYPTION_KEY` | **Yes** | — | Min 16-char key for encrypting passwords (use `openssl rand -hex 16`) |
 | `DATABASE_URL` | No | — | PostgreSQL connection string (production) |
 | `TURSO_DATABASE_URL` | No | — | Turso database URL (serverless) |
 | `TURSO_AUTH_TOKEN` | No | — | Turso authentication token |
 | `PORT` | No | `3000` | Port to run the server on |
 | `NODE_ENV` | No | `development` | Environment (`development` or `production`) |
+| `DB_SSL_REJECT_UNAUTHORIZED` | No | `true` | SSL cert validation; set `false` only for self-signed certs in dev |
 | `OPENAI_API_KEY` | No | — | OpenAI API key for AI features |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for AI features |
 | `OLLAMA_HOST` | No | `http://localhost:11434` | Ollama server URL for local AI |
@@ -474,6 +475,62 @@ ScurryDB is designed to run on **trusted networks** (localhost, VPN, internal ne
 3. Enabling firewall rules to restrict access
 
 Found a security vulnerability? Please email **security@scurrydb.com** instead of opening a public issue.
+
+### Security Configuration
+
+#### Required: Encryption Key
+
+ScurryDB requires an `ENCRYPTION_KEY` environment variable to encrypt sensitive data (database connection passwords, API keys). **The application will not start without it.**
+
+```bash
+# Generate a secure 32-character encryption key
+openssl rand -hex 16
+
+# Example output: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+```
+
+**Requirements:**
+- Minimum 16 characters (32 recommended)
+- Use a cryptographically random value
+- Keep it secret and backed up securely
+- Changing it will invalidate all encrypted data
+
+#### SSL/TLS Certificate Validation
+
+By default, ScurryDB validates SSL certificates when connecting to PostgreSQL databases. This protects against man-in-the-middle attacks.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_SSL_REJECT_UNAUTHORIZED` | `true` | Set to `false` only for self-signed certificates in development |
+
+```bash
+# Only use in development with self-signed certificates!
+DB_SSL_REJECT_UNAUTHORIZED=false
+```
+
+**Warning:** Disabling certificate validation makes connections vulnerable to interception. Never disable in production.
+
+#### Security Best Practices
+
+1. **Environment Variables**
+   - Never commit `.env` files to version control
+   - Use secrets management in production (AWS Secrets Manager, Vault, etc.)
+   - Rotate `ENCRYPTION_KEY` periodically (requires re-encrypting data)
+
+2. **Database Connections**
+   - Always use SSL/TLS for remote database connections
+   - Use strong, unique passwords for each database
+   - Limit database user privileges to minimum required
+
+3. **Network Security**
+   - Run ScurryDB on localhost or behind a VPN
+   - Use a reverse proxy with HTTPS if exposed publicly
+   - Enable firewall rules to restrict access
+
+4. **Data Protection**
+   - Connection passwords are encrypted at rest (AES-256-GCM)
+   - API keys are encrypted before storage
+   - Session tokens are HTTP-only secure cookies
 
 ---
 

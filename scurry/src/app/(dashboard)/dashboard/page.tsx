@@ -51,6 +51,21 @@ export default function DashboardPage() {
     setFormOpen(true);
   };
 
+  const handleCreateConnection = async (data: ConnectionFormData) => {
+    const response = await fetch('/api/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create connection');
+    }
+
+    toast.success('Connection created successfully');
+    refetch();
+  };
+
   const handleUpdateConnection = async (data: ConnectionFormData) => {
     if (!editingConnection) return;
 
@@ -97,14 +112,6 @@ export default function DashboardPage() {
               </span>
             )}
           </div>
-          {!isTeamWorkspace && (
-            <Button asChild size="sm" variant="outline">
-              <Link href="/connections">
-                <Plus className="mr-2 h-4 w-4" />
-                Add New
-              </Link>
-            </Button>
-          )}
           {isTeamWorkspace && (
             <Button asChild size="sm" variant="outline">
               <Link href={`/teams/${activeTeamId}/settings`}>
@@ -141,11 +148,9 @@ export default function DashboardPage() {
                   </Link>
                 </Button>
               ) : (
-                <Button asChild>
-                  <Link href="/connections">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Your First Connection
-                  </Link>
+                <Button onClick={() => setFormOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Your First Connection
                 </Button>
               )}
             </CardContent>
@@ -157,6 +162,7 @@ export default function DashboardPage() {
             teamId={activeTeamId}
             isTeamWorkspace={isTeamWorkspace}
             onEdit={handleEditConnection}
+            onAddConnection={() => setFormOpen(true)}
           />
         )}
       </section>
@@ -186,7 +192,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Edit Connection Dialog */}
+      {/* Connection Dialog */}
       <ConnectionForm
         open={formOpen}
         onOpenChange={(open) => {
@@ -194,7 +200,7 @@ export default function DashboardPage() {
           if (!open) setEditingConnection(null);
         }}
         connection={editingConnection as DatabaseConnection | undefined}
-        onSubmit={handleUpdateConnection}
+        onSubmit={editingConnection ? handleUpdateConnection : handleCreateConnection}
       />
     </div>
   );

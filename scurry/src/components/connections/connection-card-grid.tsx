@@ -36,6 +36,7 @@ interface ConnectionCardGridProps {
   teamId?: string | null;
   isTeamWorkspace?: boolean;
   onEdit?: (connection: SafeConnection) => void;
+  onAddConnection?: () => void;
 }
 
 const dbTypeLabels: Record<string, string> = {
@@ -50,7 +51,8 @@ export function ConnectionCardGrid({
   loading = false,
   teamId,
   isTeamWorkspace = false,
-  onEdit 
+  onEdit,
+  onAddConnection,
 }: ConnectionCardGridProps) {
   const [testingId, setTestingId] = React.useState<string | null>(null);
   const [testResults, setTestResults] = React.useState<Record<string, { success: boolean; message: string }>>({});
@@ -208,17 +210,17 @@ export function ConnectionCardGrid({
       })}
 
       {/* Add Connection Card */}
-      <Card className="border-dashed hover:border-primary/50 transition-colors">
+      <Card 
+        className="border-dashed hover:border-primary/50 transition-colors cursor-pointer"
+        onClick={onAddConnection}
+      >
         <CardContent className="p-4 h-full flex flex-col items-center justify-center min-h-[180px]">
-          <Link 
-            href="/connections" 
-            className="flex flex-col items-center gap-3 text-muted-foreground hover:text-foreground transition-colors"
-          >
+          <div className="flex flex-col items-center gap-3 text-muted-foreground hover:text-foreground transition-colors">
             <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
               <Plus className="h-6 w-6" />
             </div>
             <span className="text-sm font-medium">Add Connection</span>
-          </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

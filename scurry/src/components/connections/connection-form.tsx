@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, CheckCircle, XCircle, Users, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Users, Trash2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -72,6 +72,9 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
   const [selectedTeamToShare, setSelectedTeamToShare] = React.useState<string>('');
   const [selectedPermission, setSelectedPermission] = React.useState<'read' | 'write'>('read');
   const [shareActionLoading, setShareActionLoading] = React.useState(false);
+  
+  // Server IP state
+  const [serverIP, setServerIP] = React.useState<string | null>(null);
 
   const isEditing = !!connection?.id;
 
@@ -176,7 +179,26 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
   });
 
   const watchedType = form.watch('type');
+  const watchedHost = form.watch('host');
+  const watchedPort = form.watch('port');
   const isSqlite = watchedType === 'sqlite';
+  const isRemoteHost = !isSqlite && watchedHost && !['localhost', '127.0.0.1', ''].includes(watchedHost);
+
+  // Fetch server IP when remote host is detected
+  React.useEffect(() => {
+    if (isRemoteHost && !serverIP) {
+      fetch('/api/server-info')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.ip) {
+            setServerIP(data.ip);
+          }
+        })
+        .catch(() => {
+          // Ignore errors
+        });
+    }
+  }, [isRemoteHost, serverIP]);
 
   React.useEffect(() => {
     if (connection) {
@@ -358,6 +380,23 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
               </div>
             )}
 
+            {isRemoteHost && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
+                <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">Firewall Configuration Required</p>
+                  <p className="text-xs mt-1 opacity-90">
+                    Ensure your database server&apos;s firewall allows connections from ScurryDB&apos;s server 
+                    {serverIP ? (
+                      <> IP <span className="font-mono font-semibold">{serverIP}</span></>
+                    ) : (
+                      ' IP'
+                    )} on port {watchedPort || 'your database port'}.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <FormField
               control={form.control}
               name="database"
@@ -487,8 +526,8 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="read">Read</SelectItem>
-                              <SelectItem value="write">Write</SelectItem>
+                              <SelectItem value="read">Read Only</SelectItem>
+                              <SelectItem value="write">Read & Write</SelectItem>
                             </SelectContent>
                           </Select>
                           <Button
@@ -537,7 +576,7 @@ export function ConnectionForm({ open, onOpenChange, connection, onSubmit }: Con
               </div>
             )}
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <DialogFooter className="gap-2 sm:gap-2">
               <Button type="button" variant="outline" onClick={handleTest} disabled={testing}>
                 {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Test Connection
