@@ -13,11 +13,25 @@ export function getPostgresPool(): Pool {
     // Determine SSL configuration
     // Supabase and most cloud providers require SSL
     // Also detect sslmode in connection string to handle it properly
-    const requiresSsl = connectionString.includes('supabase.co') || 
+    const requiresSsl = connectionString.includes('supabase.co') ||
                         connectionString.includes('neon.tech') ||
                         connectionString.includes('sslmode=') ||
                         process.env.NODE_ENV === 'production';
-    
+
+    // SSL certificate validation configuration
+    // By default, we validate certificates for security (rejectUnauthorized: true)
+    // Set DB_SSL_REJECT_UNAUTHORIZED=false only if you understand the security implications
+    // (e.g., connecting to a database with a self-signed certificate in development)
+    const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
+
+    if (requiresSsl && !rejectUnauthorized) {
+      console.warn(
+        '⚠️  SSL certificate validation is disabled (DB_SSL_REJECT_UNAUTHORIZED=false).\n' +
+        '   This makes the connection vulnerable to man-in-the-middle attacks.\n' +
+        '   Only use this setting in development with self-signed certificates.'
+      );
+    }
+
     pool = new Pool({
       connectionString,
       max: 10,
@@ -25,7 +39,7 @@ export function getPostgresPool(): Pool {
       connectionTimeoutMillis: 10000,
       // Use explicit ssl: false when not required to prevent pg from inferring SSL
       // from connection string without proper certificate handling
-      ssl: requiresSsl ? { rejectUnauthorized: false } : false,
+      ssl: requiresSsl ? { rejectUnauthorized } : false,
     });
 
     // Handle pool errors
