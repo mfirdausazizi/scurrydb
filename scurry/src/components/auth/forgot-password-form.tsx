@@ -1,11 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,30 +15,29 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { loginSchema, type LoginFormData } from '@/lib/validations/auth';
+import { forgotPasswordSchema, type ForgotPasswordFormData } from '@/lib/validations/auth';
 import { Turnstile, useTurnstile } from './turnstile';
 
-export function LoginForm() {
-  const router = useRouter();
+export function ForgotPasswordForm() {
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isSubmitted, setIsSubmitted] = React.useState(false);
   const [honeypot, setHoneypot] = React.useState('');
   const turnstile = useTurnstile();
 
-  const form = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+  const form = useForm<ForgotPasswordFormData>({
+    resolver: zodResolver(forgotPasswordSchema),
     defaultValues: {
       email: '',
-      password: '',
     },
   });
 
-  const onSubmit = async (data: LoginFormData) => {
+  const onSubmit = async (data: ForgotPasswordFormData) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,13 +50,12 @@ export function LoginForm() {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error || 'Failed to log in');
+        setError(result.error || 'Failed to send reset email');
         turnstile.reset();
         return;
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      setIsSubmitted(true);
     } catch {
       setError('An unexpected error occurred');
       turnstile.reset();
@@ -67,12 +64,56 @@ export function LoginForm() {
     }
   };
 
+  const handleTryAgain = () => {
+    setIsSubmitted(false);
+    turnstile.reset();
+  };
+
+  if (isSubmitted) {
+    return (
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center">
+          <div className="mx-auto w-12 h-12 bg-forest/10 rounded-full flex items-center justify-center mb-4">
+            <Mail className="h-6 w-6 text-forest" />
+          </div>
+          <h1 className="text-2xl font-bold">Check your email</h1>
+          <p className="text-muted-foreground mt-2">
+            If an account with that email exists, we&apos;ve sent you a link to reset your password.
+          </p>
+        </div>
+
+        <div className="bg-muted/50 rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">
+            Didn&apos;t receive the email? Check your spam folder, or{' '}
+            <button
+              onClick={handleTryAgain}
+              className="text-primary hover:underline"
+            >
+              try again
+            </button>
+            .
+          </p>
+        </div>
+
+        <p className="text-center">
+          <Link
+            href="/login"
+            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to sign in
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-md space-y-6">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Welcome back</h1>
+        <h1 className="text-2xl font-bold">Forgot your password?</h1>
         <p className="text-muted-foreground mt-2">
-          Sign in to your ScurryDB account
+          Enter your email and we&apos;ll send you a link to reset your password.
         </p>
       </div>
 
@@ -86,11 +127,11 @@ export function LoginForm() {
 
           {/* Honeypot field - hidden from users, bots will fill it */}
           <div className="absolute -left-[9999px]" aria-hidden="true">
-            <label htmlFor="website">Website</label>
+            <label htmlFor="phone">Phone</label>
             <input
               type="text"
-              id="website"
-              name="website"
+              id="phone"
+              name="phone"
               tabIndex={-1}
               autoComplete="off"
               value={honeypot}
@@ -117,33 +158,6 @@ export function LoginForm() {
             )}
           />
 
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <div className="flex items-center justify-between">
-                  <FormLabel>Password</FormLabel>
-                  <Link
-                    href="/forgot-password"
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-                <FormControl>
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
           <Turnstile
             onVerify={turnstile.onVerify}
             onError={turnstile.onError}
@@ -152,15 +166,18 @@ export function LoginForm() {
 
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Sign In
+            Send Reset Link
           </Button>
         </form>
       </Form>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{' '}
-        <Link href="/register" className="text-primary hover:underline">
-          Sign up
+      <p className="text-center">
+        <Link
+          href="/login"
+          className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to sign in
         </Link>
       </p>
     </div>

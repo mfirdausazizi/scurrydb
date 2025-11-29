@@ -382,3 +382,97 @@ export async function deleteAISettings(userId: string): Promise<boolean> {
   const result = await client.execute('DELETE FROM ai_settings WHERE user_id = ?', [userId]);
   return result.changes > 0;
 }
+
+// Password Reset Token types
+export interface PasswordResetToken {
+  id: string;
+  userId: string;
+  token: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
+function rowToPasswordResetToken(row: DbRow): PasswordResetToken {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    token: row.token as string,
+    expiresAt: new Date(row.expires_at as string),
+    usedAt: row.used_at ? new Date(row.used_at as string) : null,
+    createdAt: new Date(row.created_at as string),
+  };
+}
+
+// Password Reset Token functions
+export async function createPasswordResetToken(data: {
+  id: string;
+  userId: string;
+  token: string;
+  expiresAt: Date;
+}): Promise<PasswordResetToken> {
+  const client = getDbClient();
+  const now = new Date().toISOString();
+
+  await client.execute(
+    `INSERT INTO password_reset_tokens (id, user_id, token, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [data.id, data.userId, data.token, data.expiresAt.toISOString(), now]
+  );
+
+  const created = await getPasswordResetTokenById(data.id);
+  if (!created) throw new Error('Failed to create password reset token');
+  return created;
+}
+
+export async function getPasswordResetTokenById(id: string): Promise<PasswordResetToken | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM password_reset_tokens WHERE id = ?', [id]);
+  return row ? rowToPasswordResetToken(row) : null;
+}
+
+export async function getPasswordResetTokenByToken(token: string): Promise<PasswordResetToken | null> {
+  const client = getDbClient();
+  const row = await client.queryOne<DbRow>('SELECT * FROM password_reset_tokens WHERE token = ?', [token]);
+  return row ? rowToPasswordResetToken(row) : null;
+}
+
+export async function getValidPasswordResetToken(token: string): Promise<PasswordResetToken | null> {
+  const client = getDbClient();
+  const now = new Date().toISOString();
+  const row = await client.queryOne<DbRow>(
+    'SELECT * FROM password_reset_tokens WHERE token = ? AND expires_at > ? AND used_at IS NULL',
+    [token, now]
+  );
+  return row ? rowToPasswordResetToken(row) : null;
+}
+
+export async function markPasswordResetTokenAsUsed(token: string): Promise<boolean> {
+  const client = getDbClient();
+  const now = new Date().toISOString();
+  const result = await client.execute(
+    'UPDATE password_reset_tokens SET used_at = ? WHERE token = ? AND used_at IS NULL',
+    [now, token]
+  );
+  return result.changes > 0;
+}
+
+export async function deleteExpiredPasswordResetTokens(): Promise<number> {
+  const client = getDbClient();
+  const now = new Date().toISOString();
+  const result = await client.execute(
+    'DELETE FROM password_reset_tokens WHERE expires_at < ? OR used_at IS NOT NULL',
+    [now]
+  );
+  return result.changes;
+}
+
+export async function invalidateUserPasswordResetTokens(userId: string): Promise<number> {
+  const client = getDbClient();
+  const now = new Date().toISOString();
+  const result = await client.execute(
+    'UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL',
+    [now, userId]
+  );
+  return result.changes;
+}
