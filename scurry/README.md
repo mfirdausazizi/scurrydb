@@ -49,7 +49,69 @@ TURSO_AUTH_TOKEN=your-token
 
 # Optional: SQLite path (development)
 APP_DB_PATH=./data/scurrydb.db
+
+# Optional: SMTP for password reset emails
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM_EMAIL=noreply@example.com
+SMTP_FROM_NAME=ScurryDB
+
+# App URL (used for email links)
+APP_URL=http://localhost:3000
 ```
+
+## SMTP Configuration (Password Reset Emails)
+
+ScurryDB supports sending password reset emails via SMTP. To enable this feature, configure the following environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SMTP_HOST` | Yes | SMTP server hostname (e.g., `smtp.gmail.com`, `smtp.sendgrid.net`) |
+| `SMTP_PORT` | Yes | SMTP server port (typically `587` for TLS, `465` for SSL) |
+| `SMTP_SECURE` | No | Set to `true` for SSL on port 465 (default: `false`) |
+| `SMTP_USER` | Yes | SMTP authentication username |
+| `SMTP_PASSWORD` | Yes | SMTP authentication password or app-specific password |
+| `SMTP_FROM_EMAIL` | Yes | Sender email address (e.g., `noreply@yourapp.com`) |
+| `SMTP_FROM_NAME` | No | Sender display name (default: `ScurryDB`) |
+| `APP_URL` | Yes | Your application URL for password reset links |
+
+### Example Configurations
+
+**Gmail:**
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-specific-password
+SMTP_FROM_EMAIL=your-email@gmail.com
+```
+> Note: Gmail requires an [App Password](https://support.google.com/accounts/answer/185833) when 2FA is enabled.
+
+**SendGrid:**
+```bash
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=apikey
+SMTP_PASSWORD=your-sendgrid-api-key
+SMTP_FROM_EMAIL=noreply@yourdomain.com
+```
+
+**Amazon SES:**
+```bash
+SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-ses-smtp-username
+SMTP_PASSWORD=your-ses-smtp-password
+SMTP_FROM_EMAIL=noreply@yourdomain.com
+```
+
+If SMTP is not configured, the forgot password feature will still be accessible but emails won't be sent (useful for development).
 
 ## Development with PostgreSQL
 
