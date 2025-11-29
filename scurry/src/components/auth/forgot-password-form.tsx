@@ -16,11 +16,14 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { forgotPasswordSchema, type ForgotPasswordFormData } from '@/lib/validations/auth';
+import { Turnstile, useTurnstile } from './turnstile';
 
 export function ForgotPasswordForm() {
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSubmitted, setIsSubmitted] = React.useState(false);
+  const [honeypot, setHoneypot] = React.useState('');
+  const turnstile = useTurnstile();
 
   const form = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -37,22 +40,33 @@ export function ForgotPasswordForm() {
       const response = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          _hp: honeypot, // Honeypot field
+          _turnstile: turnstile.token, // Turnstile token
+        }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
         setError(result.error || 'Failed to send reset email');
+        turnstile.reset();
         return;
       }
 
       setIsSubmitted(true);
     } catch {
       setError('An unexpected error occurred');
+      turnstile.reset();
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleTryAgain = () => {
+    setIsSubmitted(false);
+    turnstile.reset();
   };
 
   if (isSubmitted) {
@@ -72,7 +86,7 @@ export function ForgotPasswordForm() {
           <p className="text-sm text-muted-foreground">
             Didn&apos;t receive the email? Check your spam folder, or{' '}
             <button
-              onClick={() => setIsSubmitted(false)}
+              onClick={handleTryAgain}
               className="text-primary hover:underline"
             >
               try again
@@ -105,11 +119,25 @@ export function ForgotPasswordForm() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          {error && (
+          {(error || turnstile.error) && (
             <div className="bg-berry/10 text-berry text-sm p-3 rounded-md">
-              {error}
+              {error || turnstile.error}
             </div>
           )}
+
+          {/* Honeypot field - hidden from users, bots will fill it */}
+          <div className="absolute -left-[9999px]" aria-hidden="true">
+            <label htmlFor="phone">Phone</label>
+            <input
+              type="text"
+              id="phone"
+              name="phone"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
 
           <FormField
             control={form.control}
@@ -128,6 +156,12 @@ export function ForgotPasswordForm() {
                 <FormMessage />
               </FormItem>
             )}
+          />
+
+          <Turnstile
+            onVerify={turnstile.onVerify}
+            onError={turnstile.onError}
+            onExpire={turnstile.onExpire}
           />
 
           <Button type="submit" className="w-full" disabled={isLoading}>

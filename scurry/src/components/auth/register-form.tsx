@@ -17,6 +17,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { registerSchema, type RegisterFormData } from '@/lib/validations/auth';
+import { Turnstile, useTurnstile } from './turnstile';
 
 interface PasswordRequirement {
   label: string;
@@ -34,7 +35,9 @@ export function RegisterForm() {
   const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  
+  const [honeypot, setHoneypot] = React.useState('');
+  const turnstile = useTurnstile();
+
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -44,36 +47,42 @@ export function RegisterForm() {
       confirmPassword: '',
     },
   });
-  
+
   const watchedPassword = form.watch('password');
-  
+
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          _hp: honeypot, // Honeypot field
+          _turnstile: turnstile.token, // Turnstile token
+        }),
       });
-      
+
       const result = await response.json();
-      
+
       if (!response.ok) {
         setError(result.error || 'Failed to create account');
+        turnstile.reset();
         return;
       }
-      
+
       router.push('/dashboard');
       router.refresh();
     } catch {
       setError('An unexpected error occurred');
+      turnstile.reset();
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   return (
     <div className="w-full max-w-md space-y-6">
       <div className="text-center">
@@ -82,15 +91,29 @@ export function RegisterForm() {
           Get started with ScurryDB for free
         </p>
       </div>
-      
+
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          {error && (
+          {(error || turnstile.error) && (
             <div className="bg-berry/10 text-berry text-sm p-3 rounded-md">
-              {error}
+              {error || turnstile.error}
             </div>
           )}
-          
+
+          {/* Honeypot field - hidden from users, bots will fill it */}
+          <div className="absolute -left-[9999px]" aria-hidden="true">
+            <label htmlFor="company">Company</label>
+            <input
+              type="text"
+              id="company"
+              name="company"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
+
           <FormField
             control={form.control}
             name="name"
@@ -108,7 +131,7 @@ export function RegisterForm() {
               </FormItem>
             )}
           />
-          
+
           <FormField
             control={form.control}
             name="email"
@@ -127,7 +150,7 @@ export function RegisterForm() {
               </FormItem>
             )}
           />
-          
+
           <FormField
             control={form.control}
             name="password"
@@ -167,7 +190,7 @@ export function RegisterForm() {
               </FormItem>
             )}
           />
-          
+
           <FormField
             control={form.control}
             name="confirmPassword"
@@ -186,14 +209,20 @@ export function RegisterForm() {
               </FormItem>
             )}
           />
-          
+
+          <Turnstile
+            onVerify={turnstile.onVerify}
+            onError={turnstile.onError}
+            onExpire={turnstile.onExpire}
+          />
+
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Account
           </Button>
         </form>
       </Form>
-      
+
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{' '}
         <Link href="/login" className="text-primary hover:underline">

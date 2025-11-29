@@ -113,6 +113,51 @@ SMTP_FROM_EMAIL=noreply@yourdomain.com
 
 If SMTP is not configured, the forgot password feature will still be accessible but emails won't be sent (useful for development).
 
+## Spam Protection (Cloudflare Turnstile)
+
+ScurryDB includes built-in spam protection using a combination of:
+- **Honeypot fields** - Hidden form fields that catch simple bots (zero user friction)
+- **Cloudflare Turnstile** - Privacy-friendly CAPTCHA alternative (minimal user friction)
+
+### Setting Up Turnstile
+
+1. Go to the [Cloudflare Turnstile Dashboard](https://dash.cloudflare.com/turnstile)
+2. Click "Add Site" and configure:
+   - **Site name:** Your app name
+   - **Domains:** Your domain(s) (e.g., `localhost`, `yourapp.com`)
+   - **Widget Mode:** Managed (recommended)
+3. Copy the **Site Key** and **Secret Key**
+
+Add these to your `.env.local`:
+
+```bash
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAA...
+TURNSTILE_SECRET_KEY=0x4AAAAAAA...
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Yes* | Public site key for the widget |
+| `TURNSTILE_SECRET_KEY` | Yes* | Secret key for server verification |
+
+*If not configured, Turnstile is disabled and only honeypot protection is active.
+
+### Testing Keys
+
+For development, you can use Cloudflare's test keys:
+
+```bash
+# Always passes
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+
+# Always blocks
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=2x00000000000000000000AB
+TURNSTILE_SECRET_KEY=2x0000000000000000000000000000000AB
+```
+
+See [Cloudflare Turnstile Docs](https://developers.cloudflare.com/turnstile/) for more details.
+
 ## Development with PostgreSQL
 
 ```bash
