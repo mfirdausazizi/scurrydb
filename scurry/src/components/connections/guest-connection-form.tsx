@@ -61,6 +61,7 @@ export function GuestConnectionForm({ open, onOpenChange, connection, onSubmit }
   const [submitting, setSubmitting] = React.useState(false);
   const [sshExpanded, setSshExpanded] = React.useState(false);
   const [decryptedPassword, setDecryptedPassword] = React.useState<string>('');
+  const [serverIP, setServerIP] = React.useState<string | null>(null);
 
   const isEditing = !!connection?.id;
 
@@ -103,6 +104,22 @@ export function GuestConnectionForm({ open, onOpenChange, connection, onSubmit }
   const watchedPort = form.watch('port');
   const isSqlite = watchedType === 'sqlite';
   const isRemoteHost = !isSqlite && watchedHost && !['localhost', '127.0.0.1', ''].includes(watchedHost);
+
+  // Fetch server IP when remote host is detected
+  React.useEffect(() => {
+    if (isRemoteHost && !serverIP) {
+      fetch('/api/server-info')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.ip) {
+            setServerIP(data.ip);
+          }
+        })
+        .catch(() => {
+          // Ignore errors
+        });
+    }
+  }, [isRemoteHost, serverIP]);
 
   // Reset form when connection changes or dialog opens
   React.useEffect(() => {
@@ -333,7 +350,12 @@ export function GuestConnectionForm({ open, onOpenChange, connection, onSubmit }
                 <div>
                   <p className="font-medium">Firewall Configuration Required</p>
                   <p className="text-xs mt-1 opacity-90">
-                    Ensure your database server&apos;s firewall allows connections from ScurryDB&apos;s server on port {watchedPort || 'your database port'}.
+                    Ensure your database server&apos;s firewall allows connections from ScurryDB&apos;s server
+                    {serverIP ? (
+                      <> IP <span className="font-mono font-semibold">{serverIP}</span></>
+                    ) : (
+                      ' IP'
+                    )} on port {watchedPort || 'your database port'}.
                   </p>
                 </div>
               </div>
