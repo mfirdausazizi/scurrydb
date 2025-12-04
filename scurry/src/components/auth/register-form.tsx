@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/form';
 import { registerSchema, type RegisterFormData } from '@/lib/validations/auth';
 import { Turnstile, useTurnstile } from './turnstile';
+import { GuestMigrationDialog, useHasGuestConnections } from './guest-migration-dialog';
 
 interface PasswordRequirement {
   label: string;
@@ -36,7 +37,9 @@ export function RegisterForm() {
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [honeypot, setHoneypot] = React.useState('');
+  const [showMigrationDialog, setShowMigrationDialog] = React.useState(false);
   const turnstile = useTurnstile();
+  const hasGuestConnections = useHasGuestConnections();
 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -73,8 +76,13 @@ export function RegisterForm() {
         return;
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      // Check if user has guest connections to migrate
+      if (hasGuestConnections) {
+        setShowMigrationDialog(true);
+      } else {
+        router.push('/dashboard');
+        router.refresh();
+      }
     } catch {
       setError('An unexpected error occurred');
       turnstile.reset();
@@ -229,6 +237,12 @@ export function RegisterForm() {
           Sign in
         </Link>
       </p>
+
+      {/* Guest Migration Dialog */}
+      <GuestMigrationDialog
+        open={showMigrationDialog}
+        onOpenChange={setShowMigrationDialog}
+      />
     </div>
   );
 }

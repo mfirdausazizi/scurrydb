@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { TryGuestModeButton } from '@/components/auth/try-guest-mode-button';
 
 export default function LandingPage() {
   return (
@@ -75,12 +76,19 @@ export default function LandingPage() {
                   <ChevronRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="text-base">
-                <Link href="https://github.com/mfirdausazizi/scurrydb" target="_blank" rel="noopener noreferrer">
-                  <Github className="mr-2 h-5 w-5" />
-                  View on GitHub
-                </Link>
-              </Button>
+              <TryGuestModeButton className="text-base" />
+            </div>
+            
+            <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground animate-fade-in-up animation-delay-400">
+              <Link 
+                href="https://github.com/mfirdausazizi/scurrydb" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                <Github className="h-4 w-4" />
+                View on GitHub
+              </Link>
             </div>
 
             {/* Terminal Preview */}

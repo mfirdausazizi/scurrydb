@@ -4,6 +4,9 @@ export { useEditorTabsStore } from './editor-tabs-store';
 export type { EditorTab } from './editor-tabs-store';
 export { usePendingChangesStore, getStoreKey, emptyChanges } from './pending-changes-store';
 export type { TablePendingChanges } from './pending-changes-store';
+export { useGuestModeStore, useIsGuestMode, useGuestId } from './guest-mode-store';
+export { useGuestConnectionsStore, useSafeGuestConnections } from './guest-connections-store';
+export type { GuestConnection } from './guest-connections-store';
 
 // PERF-009: Export optimized selectors
 export {
